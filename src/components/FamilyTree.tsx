@@ -48,6 +48,8 @@ const FamilyTree: React.FC = () => {
 
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const topAxisRef = useRef<SVGSVGElement>(null);
+    const bottomAxisRef = useRef<SVGSVGElement>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
@@ -129,12 +131,9 @@ const FamilyTree: React.FC = () => {
             const startYear = getYear(d.start);
 
             // timelineYear filter: Hide future distros
-            // timelineYear filter: Hide future distros
-            // Use +0.999 to include the entire current timelineYear
             if (startYear > timelineYear + 0.999) return false;
 
             // showAll filter: If "Active Only", hide distros that ended BEFORE the timeline year
-            // This allows browsing history: in 2000, Slackware is active.
             if (!showAll && d.stop) {
                 const stopYear = getYear(d.stop);
                 if (stopYear < timelineYear) return false;
@@ -145,6 +144,50 @@ const FamilyTree: React.FC = () => {
             }
             return true;
         });
+
+        // Dynamic Horizontal Line Focus: If a node is selected, show only its lineage
+        if (selectedNode) {
+            const lineageIds = new Set<string>();
+            lineageIds.add(selectedNode.id);
+
+            // Ancestors (trace up)
+            const idMap = new Map(fixedData.map(d => [d.id, d]));
+            let curr: DistroNode | undefined = selectedNode;
+            while (curr && curr.parent) {
+                const p = idMap.get(curr.parent);
+                if (p) {
+                    lineageIds.add(p.id);
+                    curr = p;
+                } else {
+                    break;
+                }
+            }
+            lineageIds.add('__virtual_root__');
+
+            // Descendants (trace down)
+            const fixedParentMap = new Map<string, string[]>();
+            fixedData.forEach(d => {
+                if (d.parent) {
+                    const existing = fixedParentMap.get(d.parent) || [];
+                    existing.push(d.id);
+                    fixedParentMap.set(d.parent, existing);
+                }
+            });
+
+            const addDescendants = (pid: string) => {
+                const children = fixedParentMap.get(pid);
+                if (children) {
+                    children.forEach(cid => {
+                        lineageIds.add(cid);
+                        addDescendants(cid);
+                    });
+                }
+            };
+            addDescendants(selectedNode.id);
+
+            // Apply filter
+            filteredData = filteredData.filter(d => lineageIds.has(d.id));
+        }
 
         // Add virtual root for multiple root nodes
         // Create a set of visible IDs for fast lookup
@@ -220,7 +263,7 @@ const FamilyTree: React.FC = () => {
         const minYear = 1991;
         const maxYear = new Date().getFullYear();
 
-        const margin = { top: 80, right: 200, bottom: 80, left: 200 };
+        const margin = { top: 80, right: 50, bottom: 80, left: 50 };
         const chartWidth = width - margin.left - margin.right;
         const chartHeight = height - margin.top - margin.bottom;
 
@@ -379,12 +422,17 @@ const FamilyTree: React.FC = () => {
                 if (d.data.isVirtual) return;
 
                 if (focusedNodeId === d.data.id) {
-                    // Already focused -> Toggle details
-                    setSelectedNode(prev => prev?.id === d.data.id ? null : d.data);
+                    // Already focused -> Toggle details? Or nothing?
+                    // If we toggle off, filter is removed.
+                    // Let's keep it selected.
+                    // Or maybe toggle off resets?
+                    // User says "until users resets". Reset is usually background click.
+                    // So clicking node again does nothing? Or keeps panel open?
+                    setSelectedNode(d.data);
                 } else {
-                    // New Focus -> Center and Highlight
+                    // New Focus -> Filter Lineage Immediately
                     setFocusedNodeId(d.data.id);
-                    setSelectedNode(null);
+                    setSelectedNode(d.data);
 
                     // Auto-expand ancestors and self to show lineage and children
                     setCollapsedIds(prev => {
@@ -473,18 +521,29 @@ const FamilyTree: React.FC = () => {
             .attr('fill', '#e2e8f0')
             .text((d: any) => d._children ? '+' : '-');
 
-        // Initial zoom to fit (only if no focus)
-        if (!focusedNodeId) {
+
+        // Initial zoom / Auto-Center
+        if (selectedNode) {
+            const targetNode = root.descendants().find((d: any) => d.data.id === selectedNode.id);
+            if (targetNode && typeof targetNode.x === 'number' && typeof targetNode.y === 'number') {
+                const x = targetNode.x;
+                const y = targetNode.y;
+
+                svg.transition().duration(750).call(
+                    zoom.transform as any,
+                    d3.zoomIdentity.translate(width / 2 - x, height / 2 - y).scale(1)
+                );
+            }
+        } else if (!focusedNodeId) {
             const initialScale = 0.8;
             const initialTranslateX = (width - chartWidth * initialScale) / 2;
             const initialTranslateY = 0;
-
             svg.call(zoom.transform as any, d3.zoomIdentity
                 .translate(initialTranslateX, initialTranslateY)
                 .scale(initialScale));
         }
 
-    }, [searchTerm, showAll, parseDate, getYear, timelineYear, focusedNodeId, collapsedIds]);
+    }, [searchTerm, showAll, parseDate, getYear, timelineYear, focusedNodeId, collapsedIds, selectedNode, fixedData]);
 
     return (
         <div ref={containerRef} className="w-full h-full relative">

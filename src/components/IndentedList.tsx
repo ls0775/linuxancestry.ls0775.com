@@ -28,6 +28,7 @@ const IndentedList: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [showAll, setShowAll] = useState(false);
+    const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['__virtual_root__']));
 
     const getDistroWatchUrl = (name: string, url?: string) => {
@@ -196,16 +197,20 @@ const IndentedList: React.FC = () => {
             myColor = colorScale(node.id);
         }
 
-        // Display color: Red if stopped, otherwise family color (or default cyan)
-        const displayColor = node.stop ? '#ef4444' : (myColor || '#06b6d4');
+        // Display color: Red if stopped; Grey if leaf (no children); otherwise Family Color
+        let displayColor = node.stop ? '#ef4444' : (hasChildren ? (myColor || '#06b6d4') : '#94a3b8');
 
         return (
             <div key={node.id}>
                 <div
-                    className={`flex items-center gap-2 py-2 px-3 hover:bg-slate-800/50 rounded-lg transition-colors cursor-pointer group ${selectedNode?.id === node.id ? 'bg-slate-800/70' : ''
+                    className={`flex items-center gap-2 py-2 px-3 hover:bg-slate-800/50 rounded-lg transition-colors cursor-pointer group ${(selectedNode?.id === node.id || focusedNodeId === node.id) ? 'bg-slate-800/70' : ''
                         }`}
                     style={{ paddingLeft: `${depth * 24 + 12}px` }}
-                    onClick={() => !isRoot && setSelectedNode(node)}
+                    onClick={() => {
+                        if (!isRoot) {
+                            setFocusedNodeId(node.id);
+                        }
+                    }}
                 >
                     {/* Expand/Collapse Icon */}
                     {hasChildren ? (
@@ -224,6 +229,20 @@ const IndentedList: React.FC = () => {
                         </button>
                     ) : (
                         <div className="w-4" />
+                    )}
+
+                    {/* Info Button */}
+                    {!isRoot && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedNode(node);
+                                setFocusedNodeId(node.id);
+                            }}
+                            className="w-4 h-4 rounded-full border border-slate-600 flex items-center justify-center hover:bg-cyan-500 hover:border-cyan-500 hover:text-white transition-colors group/info"
+                        >
+                            <span className="text-[10px] font-bold font-serif italic leading-none">i</span>
+                        </button>
                     )}
 
                     {/* Color Indicator */}
