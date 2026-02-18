@@ -4,8 +4,8 @@ A high-performance, modern visualization of the Linux distribution family tree, 
 
 ## 🌟 Inspiration & Credits
 This project is a modern reimagining of the classic Linux lineage visualizations. We owe our inspiration and data structure patterns to these incredible community resources:
+- **[jappeace/distrowatch1graph1svg](https://github.com/jappeace/distrowatch1graph1svg)**: The original project that pioneered SVG-based Linux family tree generation from DistroWatch data.
 - **[LinuxTimeline (GitHub)](https://github.com/ls0775/LinuxTimeline)**: The foundation for chronological distribution tracking.
-- **[LinuxAncestry (GitHub)](https://github.com/ls0775/linuxancestry.ls0775.com)**: For pioneering the interactive exploration of distro origins.
 - **[DistroWatch Family Tree](https://distrowatch.com/dwres.php?resource=family-tree)**: The gold standard for Linux distribution metadata and relationship mapping.
 - **[Wikipedia: Linux Distribution](https://en.wikipedia.org/wiki/Linux_distribution)**: For the historical context of the ecosystem's "Big Bang" moments.
 
