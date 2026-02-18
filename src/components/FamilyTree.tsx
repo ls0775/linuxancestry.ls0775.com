@@ -6,7 +6,7 @@ import TimelineControls from './TimelineControls';
 import { useDistroData, type DistroNode } from '../hooks/useDistroData';
 
 const FamilyTree: React.FC = () => {
-    const { data: fixedData, isLoading } = useDistroData();
+    const { data: distroData, isLoading } = useDistroData();
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     
@@ -40,7 +40,7 @@ const FamilyTree: React.FC = () => {
         if (svgRef.current && zoomRef.current) {
             d3.select(svgRef.current).transition().duration(750).call(
                 zoomRef.current.transform,
-                d3.zoomIdentity.translate(50, 50).scale(0.6)
+                d3.zoomIdentity.translate(50, 50).scale(0.3)
             );
         }
     };
@@ -70,27 +70,24 @@ const FamilyTree: React.FC = () => {
         return date.getFullYear() + (dayOfYear / 366);
     }, [parseDate]);
 
-    // Unified Initialization and Update Effect
+    // 1. One-time Setup
     useEffect(() => {
-        if (!svgRef.current || !containerRef.current || !fixedData.length) return;
+        if (!svgRef.current || !containerRef.current || !distroData.length) return;
 
-        const container = containerRef.current;
-        const width = container.clientWidth;
-        const height = container.clientHeight;
+        const width = containerRef.current.clientWidth;
+        const height = containerRef.current.clientHeight;
         if (width === 0 || height === 0) return;
 
         const margin = { top: 100, right: 100, bottom: 100, left: 100 };
-        // Increase base sizes to prevent compression
-        const chartWidth = 2400; 
-        const chartHeight = 1200;
+        const chartWidth = 3000; // Wide for timeline
+        const chartHeight = 1600; // Tall for families
 
-        // 1. Setup Groups if missing
         if (!groupsRef.current) {
             const svg = d3.select(svgRef.current).attr('width', width).attr('height', height);
             svg.selectAll('*').remove();
             const gZoom = svg.append('g');
 
-            const xScale = d3.scaleLinear().domain([1991, currentYear]).range([0, chartWidth]);
+            const xScale = d3.scaleLinear().domain([1991, 2026]).range([0, chartWidth]);
             const gGrid = gZoom.append('g').attr('class', 'year-grid');
             const gLink = gZoom.append('g').attr('class', 'links');
             const gNode = gZoom.append('g').attr('class', 'nodes');
@@ -105,21 +102,66 @@ const FamilyTree: React.FC = () => {
             zoomRef.current = zoom;
             svg.call(zoom).on('click', () => { setSelectedNode(null); });
 
-            // Initial view - pull back to see more
-            svg.call(zoom.transform as any, d3.zoomIdentity.translate(50, height/4).scale(0.3));
+            // Initial view
+            svg.call(zoom.transform as any, d3.zoomIdentity.translate(50, height/4).scale(0.2));
 
             const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 1.5 : 2.5));
 
             groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, margin };
         }
+    }, [distroData.length, currentYear]);
 
-        // 2. Perform Update
-        const { gGrid, gLink, gNode, xScale, treeLayout } = groupsRef.current;
+    // 2. Smooth Update Loop
+    useEffect(() => {
+        if (!groupsRef.current || !distroData.length) return;
+        const { gGrid, gLink, gNode, xScale, treeLayout, margin } = groupsRef.current;
+        const chartHeight = 1600;
         const duration = 400;
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+        const search = searchTerm.trim().toLowerCase();
+
+        // Data Prep - Filtering
+        const baseDistros = distroData.filter((d) => {
+            const startYear = getYear(d.start);
+            const stopYear = d.stop ? getYear(d.stop) : 9999;
+            if (startYear > timelineYear + 0.999) return false;
+            if (!showAll && d.stop && stopYear < timelineYear) return false;
+            if (search && !d.name.toLowerCase().includes(search)) return false;
+            return true;
+        });
+
+        // Hierarchy Setup
+        const nodeIds = new Set(baseDistros.map(d => d.id));
+        const linuxRootNode: DistroNode = { id: "Linux_Original", name: "Linux", parent: null, isVirtual: false, start: "1991-09-17" };
+
+        let dataForStratify = [
+            linuxRootNode,
+            ...baseDistros.map((d) => ({
+                ...d,
+                parentId: (d.parent && nodeIds.has(d.parent)) ? d.parent : linuxRootNode.id
+            }))
+        ].sort((a, b) => parseDate(a.start).getTime() - parseDate(b.start).getTime());
+
+        const currentVisibleIds = new Set(dataForStratify.map(d => d.id));
+        const stratify = d3.stratify<DistroNode>()
+            .id(d => d.id)
+            .parentId(d => (d.id === 'Linux_Original') ? null : (d.parent && currentVisibleIds.has(d.parent) ? d.parent : 'Linux_Original'));
+        
+        let root: d3.HierarchyNode<DistroNode>;
+        try { root = stratify(dataForStratify); } catch (e) { return; }
+        
+        // Apply collapse
+        root.descendants().forEach((d: any) => { if (collapsedIds.has(d.data.id) && d.children) { d._children = d.children; d.children = null; } });
+        
+        treeLayout(root);
+        root.descendants().forEach((node: any) => {
+            const verticalLayoutPos = node.x; 
+            node.x = xScale(getYear(node.data.start)); 
+            node.y = verticalLayoutPos; 
+        });
 
         // Grid Update
-        const yearsToDraw = d3.range(1991, currentYear + 1, 5);
+        const yearsToDraw = d3.range(1991, 2027, 5);
         const gridLines = gGrid.selectAll('line').data(yearsToDraw);
         gridLines.enter().append('line')
             .attr('stroke', '#1e293b').attr('stroke-width', (d: any) => d % 10 === 0 ? 2 : 1).attr('stroke-opacity', (d: any) => d % 10 === 0 ? 0.5 : 0.3)
@@ -137,87 +179,52 @@ const FamilyTree: React.FC = () => {
             .attr('y', (d: any) => d.pos === 'top' ? -20 : chartHeight + 30)
             .text((d: any) => d.y);
 
-        // Data Prep
-        let filteredData = fixedData.filter(d => {
-            const startYear = getYear(d.start);
-            if (startYear > timelineYear + 0.999) return false;
-            if (!showAll && d.stop && getYear(d.stop) < timelineYear) return false;
-            if (searchTerm && !d.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-            return true;
-        });
-
-        const relatedIds = new Set<string>();
-        if (selectedNode) {
-            const idMap = new Map(fixedData.map(d => [d.id, d]));
-            let curr: DistroNode | undefined = selectedNode;
-            while (curr) { relatedIds.add(curr.id); curr = curr.parent ? idMap.get(curr.parent) : undefined; }
-            relatedIds.add('__virtual_root__');
-            const addDescendants = (pid: string) => {
-                fixedData.filter(d => d.parent === pid).forEach(child => { relatedIds.add(child.id); addDescendants(child.id); });
-            };
-            addDescendants(selectedNode.id);
-            filteredData = filteredData.filter(d => relatedIds.has(d.id));
-        }
-
-        if (filteredData.length === 0) filteredData = [{ id: '__virtual_root__', name: 'Linux Origins', isVirtual: true, parent: null, start: '1991-01-01' }];
-        const currentVisibleIds = new Set(filteredData.map(d => d.id));
-        const stratify = d3.stratify<DistroNode>().id(d => d.id).parentId(d => (d.id === '__virtual_root__') ? null : (d.parent && currentVisibleIds.has(d.parent) ? d.parent : '__virtual_root__'));
-        
-        let root: d3.HierarchyNode<DistroNode>;
-        try { root = stratify(filteredData); } catch (e) { return; }
-        root.descendants().forEach((d: any) => { if (collapsedIds.has(d.data.id) && d.children) { d._children = d.children; d.children = null; } });
-        
-        treeLayout(root);
-        root.descendants().forEach((node: any) => {
-            // node.x from d3.tree is the BREADTH (vertical here)
-            // node.y from d3.tree is the DEPTH (horizontal here)
-            // WE OVERRIDE x with time
-            const verticalPos = node.x; 
-            node.x = xScale(getYear(node.data.start)); 
-            node.y = verticalPos; 
-        });
-
         // Update Links
         const linkSelection = gLink.selectAll('path.link-path').data(root.links(), (d: any) => d.target.data.id);
         linkSelection.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
         linkSelection.enter().append('path').attr('class', 'link-path')
             .attr('fill', 'none').attr('stroke', '#475569').attr('stroke-width', 2).attr('stroke-opacity', 0)
             .merge(linkSelection as any).transition().duration(duration)
-            .attr('stroke-opacity', (d: any) => !selectedNode ? 0.6 : (relatedIds.has(d.source.data.id) && relatedIds.has(d.target.data.id) ? 0.8 : 0.1))
+            .attr('stroke-opacity', (d: any) => !selectedNode ? 0.6 : 0.1)
             .attr('d', (d: any) => {
                 const midX = d.source.x + (d.target.x - d.source.x) * 0.4;
                 return `M ${d.source.x},${d.source.y} H ${midX} V ${d.target.y} H ${d.target.x}`;
             });
 
         // Update Nodes
-        const nodes = root.descendants();
-        const nodeSelection = gNode.selectAll('g.node-group').data(nodes, (d: any) => d.data.id);
+        const nodeSelection = gNode.selectAll('g.node-group').data(root.descendants(), (d: any) => d.data.id);
         nodeSelection.exit().transition().duration(duration).attr('opacity', 0).remove();
         
         const nodeEnter = nodeSelection.enter().append('g').attr('class', 'node-group').attr('cursor', 'pointer').attr('opacity', 0)
             .on('click', (event: any, d: any) => {
                 event.stopPropagation();
-                if (d.data.isVirtual) return;
+                if (d.data.id === 'Linux_Original') return;
                 setSelectedNode(d.data);
             });
 
-        nodeEnter.append('circle').attr('r', (d: any) => d.data.isVirtual ? 8 : 6).attr('stroke-width', 2);
+        nodeEnter.append('circle').attr('r', (d: any) => d.data.id === 'Linux_Original' ? 8 : 6).attr('stroke-width', 2);
         nodeEnter.append('text').attr('text-anchor', 'middle').attr('fill', '#e2e8f0').attr('font-size', '11px').style('pointer-events', 'none');
 
         const nodeUpdate = nodeSelection.merge(nodeEnter as any).transition().duration(duration)
-            .attr('opacity', (d: any) => !selectedNode || relatedIds.has(d.data.id) ? 1 : 0.1)
+            .attr('opacity', 1)
             .attr('transform', (d: any) => `translate(${d.x},${d.y})`);
 
         nodeUpdate.select('circle')
-            .attr('fill', (d: any) => d.data.isVirtual ? '#64748b' : (d.data.stop ? '#ef4444' : colorScale(d.ancestors().reverse()[1]?.data.id || d.data.id)))
+            .attr('fill', (d: any) => {
+                if (d.data.id === 'Linux_Original') return '#64748b';
+                if (d.data.stop) return '#ef4444';
+                let family = d;
+                while (family.parent && family.parent.data.id !== 'Linux_Original') { family = family.parent; }
+                return colorScale(family.data.id);
+            })
             .attr('stroke', (d: any) => selectedNode?.id === d.data.id ? '#fff' : 'none');
 
         nodeUpdate.select('text')
             .attr('dy', (_d: any, i: number) => i % 2 === 0 ? -12 : 20)
-            .attr('font-weight', (d: any) => d.data.isVirtual ? 'bold' : 'normal')
+            .attr('font-weight', (d: any) => d.data.id === 'Linux_Original' ? 'bold' : 'normal')
             .text((d: any) => d.data.name);
 
-    }, [fixedData, timelineYear, searchTerm, showAll, collapsedIds, selectedNode, currentYear, getYear]);
+    }, [distroData, timelineYear, searchTerm, showAll, collapsedIds, selectedNode, getYear, parseDate]);
 
     if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
