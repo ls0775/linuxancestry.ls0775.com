@@ -93,14 +93,6 @@ const RadialTree: React.FC = () => {
     const overallMinYearRef = useRef<number>(1992); // Default
     const overallMaxYearRef = useRef<number>(new Date().getFullYear()); // Default
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-        );
-    }
-
     const getDistroWatchUrl = (name: string, url?: string) => {
         if (url && url.includes('distrowatch.com')) return url;
         const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -480,6 +472,14 @@ const RadialTree: React.FC = () => {
             d3.zoomIdentity.translate(width / 2, height / 2).scale(0.8)
         );
     };
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
 
     return (
         <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-[#0f172a]">

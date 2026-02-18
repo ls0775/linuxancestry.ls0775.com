@@ -54,14 +54,6 @@ const IndentedList: React.FC = () => {
         setExpandedNodes(new Set(['__virtual_root__']));
     };
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-        );
-    }
-
     const getDistroWatchUrl = (name: string, url?: string) => {
         if (url && url.includes('distrowatch.com')) return url;
         const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -317,6 +309,14 @@ const IndentedList: React.FC = () => {
             </div>
         );
     };
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full h-full relative flex">
