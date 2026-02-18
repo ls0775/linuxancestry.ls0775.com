@@ -3,65 +3,10 @@ import * as d3 from 'd3';
 import { Search, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import TimelineControls from './TimelineControls';
-
-interface DistroNode {
-    id: string;
-    name: string;
-    color?: string;
-    parent?: string | null;
-    start?: string;
-    stop?: string;
-    icon?: string;
-    logo?: string;
-    url?: string;
-    isVirtual?: boolean;
-    parentId?: string;
-    popularity?: string | null;
-    description?: string | null;
-    based_on?: string;
-}
+import { useDistroData, DistroNode } from '../hooks/useDistroData';
 
 const FamilyTree: React.FC = () => {
-    const [distroData, setDistroData] = useState<DistroNode[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        fetch('/distros.json')
-            .then(res => res.json())
-            .then(data => {
-                setDistroData(data);
-                setIsLoading(false);
-            })
-            .catch(err => {
-                console.error('Failed to load distro data:', err);
-                setIsLoading(false);
-            });
-    }, []);
-
-    // Sanitize data: fix known issues in source JSON
-    const fixedData = useMemo(() => {
-        if (!distroData.length) return [];
-        const data = (distroData as DistroNode[]).map(d => ({ ...d }));
-        const idMap = new Map(data.map(d => [d.id, d]));
-
-        // Fix Ubuntu parent if broken
-        const ubuntu = idMap.get('ubuntu');
-        if (ubuntu && ubuntu.parent !== 'debian') {
-            ubuntu.parent = 'debian';
-        }
-
-        // Fix Ubuntu-based distros incorrectly pointing to Debian
-        data.forEach(d => {
-            if (d.id === 'ubuntu') return;
-            const basedOn = d.based_on || '';
-            const desc = d.description || '';
-            if (basedOn.includes('Ubuntu') || desc.includes('Ubuntu-based') || desc.includes('based on Ubuntu')) {
-                if (d.parent !== 'ubuntu') d.parent = 'ubuntu';
-            }
-        });
-        return data;
-    }, []);
-
+    const { data: fixedData, isLoading } = useDistroData();
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -125,7 +70,7 @@ const FamilyTree: React.FC = () => {
     }, [parseDate]);
 
     useEffect(() => {
-        if (!svgRef.current || !containerRef.current) return;
+        if (!svgRef.current || !containerRef.current || !fixedData.length) return;
 
         const container = containerRef.current;
         const width = container.clientWidth;
@@ -355,53 +300,24 @@ const FamilyTree: React.FC = () => {
                 .text(year);
         }
 
-        // Calculate dynamic height based on leaf count to avoid overlap
-        // Allocate vertical space per leaf node
-        const leaves = root.leaves().length;
-        const minHeightPerLeaf = 24;
-        const layoutHeight = Math.max(chartHeight, leaves * minHeightPerLeaf);
-
-        const treeLayout = d3.tree<DistroNode>()
-            .size([layoutHeight, chartWidth])
-            .separation((a, b) => (a.parent === b.parent ? 1 : 2));
+        // Tree layout setup
+        const treeLayout = d3.tree()
+            .size([chartHeight, chartWidth]);
 
         treeLayout(root);
 
-        // Calculate focus state
-        let focusedNode: any = null;
+        // Map hierarchy nodes to years
         const relatedIds = new Set<string>();
-
         if (focusedNodeId) {
-            focusedNode = root.descendants().find((d: any) => d.data.id === focusedNodeId);
+            const focusedNode = root.descendants().find((d: any) => d.data.id === focusedNodeId);
             if (focusedNode) {
-                // Highlight ancestors (path to root) and descendants (family tree)
-                focusedNode.ancestors().forEach((d: any) => relatedIds.add(d.data.id));
+                focusedNode.ancestors().forEach((a: any) => relatedIds.add(a.data.id));
                 focusedNode.descendants().forEach((d: any) => relatedIds.add(d.data.id));
             }
         }
 
-        // Position nodes based on start date (X) and tree layout breadth (Y)
-        root.each((node: any) => {
+        root.descendants().forEach((node: any) => {
             const startYear = getYear(node.data.start);
-
-            // Override X with time-scale
-            // Keep Y from tree layout (which is stored in node.x by d3.tree horizontal logic? No, let's verify)
-
-            // d3.tree().size([height, width])
-            // Standard vertical tree: x=breadth (horizontal), y=depth (vertical)
-
-            // If we want a horizontal tree layout from D3, usually we swap x/y.
-            // Here, we want D3 to compute vertical positions for us.
-            // If we use default vertical tree layout: 
-            // node.x will be horizontal position (0..width)
-            // node.y will be vertical position (0..height)
-
-            // Wait, if root is "Linux Origins" and it has many children, 
-            // a vertical tree puts root at top (x=center), children spread below.
-
-            // We want Root at Left (Vertical Center), children spread to right.
-            // This corresponds to node.x in a vertical tree becoming our node.y!
-
             // Let's use node.x from the layout as our node.y
             const computedY = node.x;
 
@@ -453,12 +369,6 @@ const FamilyTree: React.FC = () => {
                 if (d.data.isVirtual) return;
 
                 if (focusedNodeId === d.data.id) {
-                    // Already focused -> Toggle details? Or nothing?
-                    // If we toggle off, filter is removed.
-                    // Let's keep it selected.
-                    // Or maybe toggle off resets?
-                    // User says "until users resets". Reset is usually background click.
-                    // So clicking node again does nothing? Or keeps panel open?
                     setSelectedNode(d.data);
                 } else {
                     // New Focus -> Filter Lineage Immediately
@@ -478,6 +388,7 @@ const FamilyTree: React.FC = () => {
             });
 
         // Zoom to focused node
+        const focusedNode = focusedNodeId ? root.descendants().find((d: any) => d.data.id === focusedNodeId) : null;
         if (focusedNode) {
             const scale = 1.5;
             const x = -focusedNode.x * scale + width / 2;
@@ -503,9 +414,8 @@ const FamilyTree: React.FC = () => {
                 }
                 return colorScale(family.data.id);
             })
-            .attr('stroke', '#0f172a')
-            .attr('stroke-width', 2)
-            .style('filter', 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))');
+            .attr('stroke', (d: any) => selectedNode?.id === d.data.id ? '#fff' : 'none')
+            .attr('stroke-width', 2);
 
         // Node labels
         nodes.append('text')
@@ -554,7 +464,7 @@ const FamilyTree: React.FC = () => {
 
 
         // Initial zoom / Auto-Center
-        if (selectedNode) {
+        if (selectedNode && !focusedNodeId) {
             const targetNode = root.descendants().find((d: any) => d.data.id === selectedNode.id);
             if (targetNode && typeof targetNode.x === 'number' && typeof targetNode.y === 'number') {
                 const x = targetNode.x;
@@ -586,10 +496,8 @@ const FamilyTree: React.FC = () => {
 
     return (
         <div ref={containerRef} className="w-full h-full relative">
-            {/* Search Bar */}
             {/* Search, Filter & Timeline Overlay */}
             <div className="absolute top-4 left-4 z-10 flex flex-col gap-4">
-                {/* Row 1: Search & Filter */}
                 <div className="flex items-center gap-3">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -624,7 +532,6 @@ const FamilyTree: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Row 2: Timeline */}
                 <div className="w-[30rem]">
                     <TimelineControls
                         minYear={1991}
@@ -635,13 +542,8 @@ const FamilyTree: React.FC = () => {
                 </div>
             </div>
 
-            {/* Timeline Controls */}
-
-
-            {/* SVG Canvas */}
             <svg ref={svgRef} className="w-full h-full" />
 
-            {/* Info Panel */}
             <AnimatePresence>
                 {selectedNode && (
                     <motion.div
@@ -683,38 +585,55 @@ const FamilyTree: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="space-y-4 mb-8">
-                                <div>
-                                    <div className="text-[10px] text-slate-500 font-black tracking-widest uppercase mb-1">Release Date</div>
-                                    <div className="text-sm text-slate-300 font-medium">{selectedNode.start || 'Unknown'}</div>
-                                </div>
-                                {selectedNode.stop && (
-                                    <div>
-                                        <div className="text-[10px] text-slate-500 font-black tracking-widest uppercase mb-1">Discontinued</div>
-                                        <div className="text-sm text-red-400 font-medium">{selectedNode.stop}</div>
+                            <div className="space-y-6 mb-8">
+                                <div className="flex items-center gap-4 text-sm">
+                                    <div className="bg-slate-800 p-2 rounded-lg text-slate-400 italic">
+                                        Born: {selectedNode.start || 'Unknown'}
                                     </div>
+                                    {selectedNode.stop && (
+                                        <div className="bg-rose-500/20 p-2 rounded-lg text-rose-400 italic">
+                                            Retired: {selectedNode.stop}
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className="text-sm text-slate-300 leading-relaxed max-h-48 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700">
+                                    {selectedNode.description || 'Historical distribution details are currently being indexed.'}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2 mb-8">
+                                {selectedNode.origin && (
+                                    <span className="bg-slate-800 text-slate-400 text-[10px] px-3 py-1 rounded-full border border-slate-700">
+                                        {selectedNode.origin}
+                                    </span>
+                                )}
+                                {selectedNode.architecture && (
+                                    <span className="bg-slate-800 text-slate-400 text-[10px] px-3 py-1 rounded-full border border-slate-700">
+                                        {selectedNode.architecture}
+                                    </span>
+                                )}
+                                {selectedNode.desktop && (
+                                    <span className="bg-slate-800 text-slate-400 text-[10px] px-3 py-1 rounded-full border border-slate-700">
+                                        {selectedNode.desktop}
+                                    </span>
                                 )}
                             </div>
 
-                            {selectedNode.description && (
-                                <p className="text-slate-400 text-[11px] leading-relaxed mb-10 line-clamp-4 font-medium italic opacity-80">
-                                    "{selectedNode.description}"
-                                </p>
-                            )}
-
-                            <div className="flex flex-col gap-3">
-                                <a href={getDistroWatchUrl(selectedNode.name, selectedNode.url)} target="_blank" rel="noopener noreferrer"
-                                    className="flex items-center justify-center gap-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-[1.5rem] py-5 text-sm font-black tracking-tight transition-all shadow-glow"
-                                >
-                                    DISTROWATCH
-                                    <Info className="w-5 h-5" />
-                                </a>
-                            </div>
+                            <a
+                                href={getDistroWatchUrl(selectedNode.name, selectedNode.url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-center gap-2 w-full py-4 bg-cyan-500 hover:bg-cyan-400 text-white rounded-2xl font-black text-xs tracking-widest transition-all shadow-lg shadow-cyan-500/25"
+                            >
+                                VIEW ON DISTROWATCH
+                                <Info className="w-4 h-4" />
+                            </a>
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div >
+        </div>
     );
 };
 

@@ -164,6 +164,16 @@ def transform_distros(raw_data: List[Dict]) -> List[Dict]:
         elif distro.get('based_on') and distro['based_on'].lower() != 'independent':
             parent = normalize_parent_name(distro['based_on'], distro_ids)
         
+        # SPECIAL FIX: Ubuntu context
+        if distro['id'] == 'ubuntu':
+            parent = 'debian'
+        else:
+            based_on = distro.get('based_on', '')
+            desc = distro.get('description', '')
+            if 'Ubuntu' in based_on or 'Ubuntu-based' in desc or 'based on Ubuntu' in desc:
+                if parent != 'ubuntu' and 'ubuntu' in distro_ids:
+                    parent = 'ubuntu'
+
         # Determine root family for coloring
         root_family = parent if parent else 'Independent'
         if parent and parent in FAMILY_COLORS:
@@ -204,9 +214,47 @@ def transform_distros(raw_data: List[Dict]) -> List[Dict]:
     valid_ids = {d['id'] for d in transformed}
     for distro in transformed:
         if distro['parent'] and distro['parent'] not in valid_ids:
-            print(f"Warning: {distro['name']} has invalid parent '{distro['parent']}', setting to null")
-            distro['parent'] = None
+            # Try to recover from based_on if available
+            recovered = False
+            if distro.get('based_on'):
+                candidates = [c.strip() for c in distro['based_on'].split(',')]
+                for candidate in candidates:
+                    norm = normalize_parent_name(candidate, valid_ids)
+                    if norm and norm in valid_ids and norm != distro['id']:
+                        distro['parent'] = norm
+                        recovered = True
+                        break
+            
+            if not recovered:
+                distro['parent'] = None
     
+    # CYCLE BREAKING (Critical for D3)
+    visited = set()
+    stack = set()
+    
+    def break_cycles(node_id, id_map):
+        if node_id in stack:
+            # Cycle detected! Break it by making this node a root
+            print(f"  Breaking cycle at {node_id}")
+            id_map[node_id]['parent'] = None
+            return
+        
+        if node_id in visited:
+            return
+            
+        visited.add(node_id)
+        stack.add(node_id)
+        
+        node = id_map.get(node_id)
+        if node and node['parent']:
+            break_cycles(node['parent'], id_map)
+            
+        stack.remove(node_id)
+
+    id_map = {d['id']: d for d in transformed}
+    for distro_id in list(id_map.keys()):
+        break_cycles(distro_id, id_map)
+
     return transformed
 
 

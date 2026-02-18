@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from 'react'
+import ErrorBoundary from './components/ErrorBoundary'
 import './App.css'
 
 const FamilyTree = lazy(() => import('./components/FamilyTree'));
@@ -57,16 +58,18 @@ function App() {
       </header>
 
       <main className="pt-20 h-screen w-full">
-        <Suspense fallback={
-          <div className="flex items-center justify-center h-full">
-            <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        }>
-          {viewMode === 'tree' && <FamilyTree />}
-          {viewMode === 'radial' && <RadialTree />}
-          {viewMode === 'sunburst' && <SunburstView />}
-          {viewMode === 'icicle' && <IcicleView />}
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-full">
+              <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          }>
+            {viewMode === 'tree' && <FamilyTree />}
+            {viewMode === 'radial' && <RadialTree />}
+            {viewMode === 'sunburst' && <SunburstView />}
+            {viewMode === 'icicle' && <IcicleView />}
+          </Suspense>
+        </ErrorBoundary>
       </main>
 
       <footer className="fixed bottom-4 left-6 z-10 hidden md:block">
