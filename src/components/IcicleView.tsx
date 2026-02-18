@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import * as d3 from 'd3';
 import { Search, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useDistroData, DistroNode } from '../hooks/useDistroData';
+import { useDistroData, type DistroNode } from '../hooks/useDistroData';
 
 const IcicleView: React.FC = () => {
     const { data: fixedData, isLoading } = useDistroData();

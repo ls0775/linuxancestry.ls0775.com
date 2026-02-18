@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { Search, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import TimelineControls from './TimelineControls';
-import { useDistroData, DistroNode } from '../hooks/useDistroData';
+import { useDistroData, type DistroNode } from '../hooks/useDistroData';
 
 const FamilyTree: React.FC = () => {
     const { data: fixedData, isLoading } = useDistroData();

@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ExternalLink, Calendar, Search, Maximize2, Info, X } from 'lucide-react';
 import TimelineControls from './TimelineControls';
-import { useDistroData, DistroNode } from '../hooks/useDistroData';
+import { useDistroData, type DistroNode } from '../hooks/useDistroData';
 
 const RadialTree: React.FC = () => {
     const { data: distroData, isLoading } = useDistroData();
