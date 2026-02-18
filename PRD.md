@@ -1,63 +1,55 @@
 # Product Requirement Document (PRD): Interactive Linux Distro Map
 
 ## 1. Project Overview
-The **Interactive Linux Distro Map** is a modern, web-based visualization tool designed to replace the legacy static SVG/CSV generation system. It provides an interactive, collapsible family tree of Linux distributions, allowing users to explore the complex history and lineage of the Linux ecosystem.
+The **Interactive Linux Distro Map** is a high-performance, web-based visualization tool that traces the evolution of the Linux ecosystem from 1991 to the present. It replaces legacy static generation systems with a dynamic, interactive experience that allows users to explore over 1,100 distributions through various hierarchical and temporal lenses.
 
 ## 2. User Objectives
-- **Explore Lineage**: Visualize how distributions are related (e.g., Debian -> Ubuntu -> Mint).
-- **Interactive Navigation**: Seamlessly zoom, pan, and expand/collapse branches of the tree.
-- **Historical Context**: View chronological data and birth dates of distributions.
-- **Modern Performance**: Ensure smooth transitions and fast rendering even with hundreds of nodes.
-- **Cross-Browser Compatibility**: Work reliably across Chrome, Firefox, Safari, and Edge.
+- **Explore Lineage**: Visualize the "DNA" of Linux (e.g., Debian -> Ubuntu -> Mint) with high technical accuracy.
+- **Interactive Navigation**: Seamlessly zoom, pan, and focus on specific families without losing historical context.
+- **Temporal Research**: Scrub through time to see the state of the ecosystem in any given year.
+- **Modern Performance**: Instant load times and smooth 60fps interactions, even with a massive 1,100+ node dataset.
+- **Cross-Platform Accessibility**: Fully responsive and optimized for all modern browsers.
 
 ## 3. Core Features
 ### 3.1. Hierarchical Visualization
-- **D3.js Tree Layout**: A horizontal tree structure representing the distribution families.
-- **Collapsible Nodes**: Nodes can be clicked to expand or collapse their children, managing visual complexity.
-- **Sorted Roots**: The root distributions are sorted chronologically (oldest first) to provide a logical starting point.
+- **Orthogonal Tidy Tree**: A clean, "bracket-style" horizontal tree that ensures clear path tracing by avoiding diagonal line crossings.
+- **Automatic Virtual Rooting**: A robust stratification engine that anchors "Independent" distributions to a single virtual project root, preventing rendering failures on filtered data.
+- **Cycle-Resilient Architecture**: Pre-processed data pipeline that detects and breaks circular references (e.g., projects that point back to themselves).
 
 ### 3.2. Visualization Modes
-The application provides **4 distinct visualization modes**, each optimized for different exploration patterns:
+The application provides **4 distinct visualization modes**:
 
-1. **Timeline View**: Horizontal tree layout with vertical year gridlines from 1991 to present. Distributions are positioned by release date (X-axis) and family depth (Y-axis).
-2. **Radial View**: Concentric circles representing years, with an interactive timeline scrubber for historical exploration.
-3. **Sunburst View**: Hierarchical partition where inner rings = earlier generations, arc size = descendant count. Click to focus on families.
-4. **List View**: Traditional collapsible tree with inline metadata (year, status, child count) and sortable columns.
-
-All modes share unified search, filtering, and detail panel functionality.
+1. **Timeline View (Tidy Tree)**: Horizontal tree layout with smart-scaling year gridlines. Uses orthogonal links for a professional, technical aesthetic.
+2. **Radial View (DNA Map)**: Concentric circles representing years (1991 outwards), featuring a temporal scrubber to "playback" Linux history.
+3. **Sunburst View (Ecosystem Overview)**: A hierarchical partition showing the relative volume of different families.
+4. **Density View (Icicle Plot)**: A high-density rectangular map optimized for comparing the scale and lifespan of families side-by-side. (Replaces legacy list views).
 
 ### 3.3. User Interaction
-- **Zoom & Pan**: Full support for mouse wheel zooming and click-and-drag panning.
-- **Search System & Path Highlighting**: A persistent search bar that highlights matching nodes. When a node is searched or selected, the entire lineage path (from root to node) is highlighted in bright cyan while other branches are dimmed.
-- **Status Filtering**: A toggle to switch between "Active Only" (default) and "Showing All" distributions.
-- **Information Panel**: A detailed glassmorphism-styled sidebar that displays selected distribution metadata (Name, Parent, Dates, Icon, URL) and direct links to official websites and DistroWatch profiles.
+- **Global Reset System**: Dedicated "RESET" functionality in every view to instantly clear all filters, search terms, and zoom states.
+- **Smart Timeline Scaling**: Year labels that dynamically adjust their font size and visibility based on the user's zoom level, ensuring "sticky" context.
+- **Deep Search & Path Highlighting**: Real-time search that highlights matching nodes and their entire ancestry chain while dimming unrelated projects.
+- **Premium Info Panel**: Glassmorphism-styled panel featuring scraped logos, DistroWatch popularity rankings, born/retired dates, and historical descriptions.
 
-### 3.4. Visual Design
-- **Lineage Focus**: Dynamic opacity and stroke-width adjustments to emphasize selected family trees.
-- **Dark Theme Palette**: Deep slate backgrounds (`#0f172a`) with cyan accents (`#06b6d4`) for hierarchy and yellow (`#facc15`) for search matches.
-- **Ecosystem Timeline**: A high-performance radial scrubber allowing users to visualize the state of the Linux world at any year from 1991 to present.
-- **Status Filtering**: Instant toggle between "Active Only" and "Show All" distributions, handling over 1,100 nodes.
-- **Information Panel**: Premium glassmorphism UI displaying scraped logos, popularity ranking (#), and historical descriptions.
+### 3.4. Technical Architecture
+- **Centralized Data Pipeline**: A Python-based ETL process (`transform_data.py`) that handles all sanitization, cycle-breaking, and relationship normalization before the data reaches the browser.
+- **Custom `useDistroData` Hook**: A unified React hook for data fetching and loading states, ensuring strict adherence to React Hook rules and consistent data across all views.
+- **Performance Optimizations**: 
+    - **Code Splitting**: Views are lazy-loaded via `React.lazy` and `Suspense`.
+    - **Manual Chunking**: Heavy libraries (D3, Framer Motion) are split into cached vendor bundles.
+    - **MIME-Safe Hosting**: Explicit absolute path routing and Azure-optimized navigation fallback rules.
 
-## 4. Technical Decisions
-- **D3.js Tree with Stratification**: Uses `d3.stratify` to handle flat JSON data flexibly.
-- **Strict Isolation Logic**: Search and selection re-stratify the tree to show ONLY the relevant lineage sub-tree, eliminating visual clutter.
-- **Interactive Timeline**: Real-time D3 re-rendering optimized for temporal scrubbing.
-- **Framer Motion**: Smooth UI transitions for panels and overlays.
-- **Path Traversal Logic**: Uses a React `useMemo` hook to calculate ancestor paths on-the-fly when the selection or search term changes.
+## 4. Deployment & DevOps
+- **Azure Static Web Apps**: Fully automated CI/CD pipeline via GitHub Actions.
+- **Static Asset Strategy**: Data is served from the `public/` directory to enable independent browser caching and reduced initial bundle size.
 
-## 5. Constraint & Compatibility
-- **Browser Support**: Optimized for modern engines. Fixed specific Firefox rendering issues by avoiding absolute `viewBox` calculations during layout shifts and using explicit width/height on the SVG container.
-- **Responsive Design**: The app fills the entire viewport, with UI overlays adapting to screen size.
-
-- **Automated Data Pipeline**: A robust Python-based scraper that handles DistroWatch anti-bot measures, connection retries, and data repair.
-- **Radial vs Tree Toggle**: Support for both traditional horizontal tree layouts and modern concentric radial visualizations.
-- **Family Distribution**: Intelligent family coloring based on upstream parents (Debian, Red Hat, Arch, etc.).
+## 5. Visual Design
+- **Theme**: Deep Slate (`#0f172a`) background with High-Contrast Cyan (`#06b6d4`) for active paths.
+- **Consistency**: Unified glassmorphism overlays and interactive controls across all visualization modes.
 
 ## 6. Future Roadmap
-- **Manual Relationship Overrides**: A configuration layer to manually correct family ties where DistroWatch metadata is ambiguous.
-- **Logo Asset Local Storage**: Automatically download and serve logo assets locally to avoid DistroWatch hotlinking limitations.
-- **SVG Export**: High-resolution export for community sharing.
+- **Community Contributions**: Interface for users to submit relationship corrections.
+- **Logo Localization**: Automated local asset mirroring to prevent DistroWatch hotlinking issues.
+- **Mobile Touch Optimization**: Enhanced gesture support for pinching and swiping on the tree views.
 
 ---
 *This document is maintained as a living record of the project requirements and evolution.*
