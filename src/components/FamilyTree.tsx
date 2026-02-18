@@ -166,17 +166,17 @@ const FamilyTree: React.FC = () => {
         
         treeLayout(root);
         root.descendants().forEach((node: any) => {
-            const layoutVerticalPos = node.x; 
+            const verticalPos = node.x; 
             node.x = xScale(getYear(node.data.start)) + margin.left; 
-            node.y = layoutVerticalPos + margin.top; 
+            node.y = verticalPos + margin.top; 
         });
 
         // Update Links
-        const link = gLink.selectAll('path.link').data(root.links(), (d: any) => d.target.data.id);
-        link.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
-        link.enter().append('path').attr('class', 'link')
+        const linkSelection = gLink.selectAll('path.link').data(root.links(), (d: any) => d.target.data.id);
+        linkSelection.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
+        linkSelection.enter().append('path').attr('class', 'link')
             .attr('fill', 'none').attr('stroke', '#475569').attr('stroke-width', 2).attr('stroke-opacity', 0)
-            .merge(link as any).transition().duration(duration)
+            .merge(linkSelection as any).transition().duration(duration)
             .attr('stroke-opacity', (d: any) => !selectedNode ? 0.6 : (relatedIds.has(d.source.data.id) && relatedIds.has(d.target.data.id) ? 0.8 : 0.1))
             .attr('d', (d: any) => {
                 const midX = d.source.x + (d.target.x - d.source.x) * 0.4;
