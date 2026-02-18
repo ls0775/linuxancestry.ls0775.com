@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
-import { Search, Info, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 interface DistroNode {
@@ -64,12 +64,6 @@ const IcicleView: React.FC = () => {
         return new Date(year, month, day);
     }, []);
 
-    const getYear = useCallback((d?: string | null) => {
-        if (!d) return 9999;
-        const date = parseDate(d);
-        return date.getFullYear();
-    }, [parseDate]);
-
     const fixedData = useMemo(() => {
         if (!distroData.length) return [];
         const data = (distroData as DistroNode[]).map(d => ({ ...d }));
@@ -114,7 +108,6 @@ const IcicleView: React.FC = () => {
         });
 
         const visibleIds = new Set(filteredData.map(d => d.id));
-        const roots = filteredData.filter(d => !d.parent || !visibleIds.has(d.parent));
 
         // Icicle requires a single root
         const virtualRoot: any = {
