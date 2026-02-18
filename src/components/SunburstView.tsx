@@ -68,6 +68,13 @@ const SunburstView: React.FC = () => {
     const [showAll, setShowAll] = useState(false);
     const [focusedPath, setFocusedPath] = useState<any>(null);
 
+    const handleReset = () => {
+        setSearchTerm('');
+        setShowAll(false);
+        setSelectedNode(null);
+        setFocusedPath(null);
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -327,6 +334,12 @@ const SunburstView: React.FC = () => {
                         className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
                     >
                         SHOW ALL
+                    </button>
+                    <button
+                        onClick={handleReset}
+                        className="px-6 py-3 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-500/10 transition-all border-l border-slate-700/50"
+                    >
+                        RESET
                     </button>
                 </div>
 

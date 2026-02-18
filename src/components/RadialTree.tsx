@@ -68,6 +68,20 @@ const RadialTree: React.FC = () => {
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [showAll, setShowAll] = useState(false);
+
+    const handleReset = () => {
+        setSearchTerm('');
+        setShowAll(false);
+        setSelectedNode(null);
+        setTimelineYear(overallMaxYearRef.current);
+        if (svgRef.current && zoomRef.current) {
+            d3.select(svgRef.current).transition().duration(750).call(
+                zoomRef.current.transform,
+                d3.zoomIdentity
+            );
+        }
+    };
+
     const timelineYear = useRef(2026); // Change to useRef
     const setTimelineYear = (year: number) => {
         timelineYear.current = year;
@@ -313,8 +327,22 @@ const RadialTree: React.FC = () => {
             .attr("stroke-opacity", 0.05)
             .attr("stroke-dasharray", "2,2");
 
-        // Year labels (could be placed along a line, e.g., at angle 0)
-        // For simplicity, skip labels or place them at top (angle -PI/2)
+        const yearLabelSelection = gYearLines.selectAll<SVGTextElement, number>(".year-label")
+            .data(yearsToDraw);
+        yearLabelSelection.exit().remove();
+        yearLabelSelection.enter().append("text")
+            .attr("class", "year-label")
+            .merge(yearLabelSelection)
+            .attr("x", 0)
+            .attr("y", d => -radiusScale(d))
+            .attr("dy", "0.35em")
+            .attr("text-anchor", "middle")
+            .attr("fill", "#ffffff")
+            .attr("fill-opacity", 0.3)
+            .style("font-size", "10px")
+            .style("font-weight", "bold")
+            .style("pointer-events", "none")
+            .text(d => d);
 
         const nodes = root.descendants().reverse();
         const links = root.links();
@@ -490,6 +518,12 @@ const RadialTree: React.FC = () => {
                             className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
                         >
                             SHOW ALL
+                        </button>
+                        <button
+                            onClick={handleReset}
+                            className="px-6 py-3 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-500/10 transition-all border-l border-slate-700/50"
+                        >
+                            RESET
                         </button>
                     </div>
                 </div>

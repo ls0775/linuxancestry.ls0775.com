@@ -73,6 +73,22 @@ const FamilyTree: React.FC = () => {
     // Timeline state
     const currentYear = new Date().getFullYear();
     const [timelineYear, setTimelineYear] = useState(currentYear);
+    const zoomRef = useRef<any>(null);
+
+    const handleReset = () => {
+        setSearchTerm('');
+        setShowAll(false);
+        setSelectedNode(null);
+        setFocusedNodeId(null);
+        setCollapsedIds(new Set());
+        setTimelineYear(currentYear);
+        if (svgRef.current && zoomRef.current) {
+            d3.select(svgRef.current).transition().duration(750).call(
+                zoomRef.current.transform,
+                d3.zoomIdentity.translate(0, 0).scale(0.8)
+            );
+        }
+    };
 
     if (isLoading) {
         return (
@@ -141,6 +157,7 @@ const FamilyTree: React.FC = () => {
                 g.selectAll('.year-label-major').style('font-size', (12 / event.transform.k) + 'px');
                 g.selectAll('.year-label-minor').style('font-size', (10 / event.transform.k) + 'px');
             });
+        zoomRef.current = zoom;
 
         svg.call(zoom)
             .on('click', () => {
@@ -597,6 +614,12 @@ const FamilyTree: React.FC = () => {
                             className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
                         >
                             SHOW ALL
+                        </button>
+                        <button
+                            onClick={handleReset}
+                            className="px-6 py-3 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-500/10 transition-all border-l border-slate-700/50"
+                        >
+                            RESET
                         </button>
                     </div>
                 </div>

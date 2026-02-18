@@ -46,6 +46,14 @@ const IndentedList: React.FC = () => {
     const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['__virtual_root__']));
 
+    const handleReset = () => {
+        setSearchTerm('');
+        setShowAll(false);
+        setSelectedNode(null);
+        setFocusedNodeId(null);
+        setExpandedNodes(new Set(['__virtual_root__']));
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -341,6 +349,12 @@ const IndentedList: React.FC = () => {
                                     className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
                                 >
                                     SHOW ALL
+                                </button>
+                                <button
+                                    onClick={handleReset}
+                                    className="px-6 py-3 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-500/10 transition-all border-l border-slate-700/50"
+                                >
+                                    RESET
                                 </button>
                             </div>
                         </div>
