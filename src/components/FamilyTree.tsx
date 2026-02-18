@@ -26,7 +26,7 @@ const FamilyTree: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        fetch('distros.json')
+        fetch('/distros.json')
             .then(res => res.json())
             .then(data => {
                 setDistroData(data);
