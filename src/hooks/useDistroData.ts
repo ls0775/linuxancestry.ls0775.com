@@ -38,6 +38,7 @@ export function useDistroData() {
             })
             .then(jsonData => {
                 if (isMounted) {
+                    console.log(`Successfully loaded ${jsonData.length} distributions.`);
                     setData(jsonData);
                     setIsLoading(false);
                 }
