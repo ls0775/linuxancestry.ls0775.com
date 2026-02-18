@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, useReducer } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useReducer, useMemo } from 'react';
 import * as d3 from 'd3';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ExternalLink, Calendar, Search, Maximize2, X } from 'lucide-react';
@@ -13,6 +13,7 @@ const RadialTree: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showAll, setShowAll] = useState(false);
     
+    // Playback state
     const timelineYear = useRef(2026); 
     const forceRender = useReducer(x => x + 1, 0)[1];
     const setTimelineYear = (year: number) => {
@@ -20,16 +21,21 @@ const RadialTree: React.FC = () => {
         forceRender();
     };
 
+    // D3 Refs
     const zoomRef = useRef<any>(null);
-    const gZoomRef = useRef<any>(null);
+    const groupsRef = useRef<{
+        gZoom: any,
+        gYearLines: any,
+        gLink: any,
+        gNode: any,
+        radiusScale: any,
+        treeLayout: any,
+        diagonal: any,
+        radius: number
+    } | null>(null);
+
     const overallMinYearRef = useRef<number>(1991);
     const overallMaxYearRef = useRef<number>(new Date().getFullYear());
-
-    const getDistroWatchUrl = (name: string, url?: string) => {
-        if (url && url.includes('distrowatch.com')) return url;
-        const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return `https://distrowatch.com/table.php?distribution=${slug}`;
-    };
 
     const getLogoUrl = (node: DistroNode) => {
         if (node.logo) return node.logo;
@@ -56,43 +62,57 @@ const RadialTree: React.FC = () => {
         return date.getFullYear() + (dayOfYear / 366);
     }, [parseDate]);
 
-    const handleReset = () => {
-        setSearchTerm('');
-        setShowAll(false);
-        setSelectedNode(null);
-        setTimelineYear(overallMaxYearRef.current);
-        if (svgRef.current && zoomRef.current) {
-            d3.select(svgRef.current).transition().duration(750).call(
-                zoomRef.current.transform,
-                d3.zoomIdentity.translate(containerRef.current!.clientWidth / 2, containerRef.current!.clientHeight / 2).scale(0.2)
-            );
-        }
-    };
-
+    // Initial SVG Setup (Run once)
     useEffect(() => {
-        if (!distroData.length) return;
-        const years = distroData.map(d => {
-            const startYear = getYear(d.start);
-            const stopYear = getYear(d.stop);
-            return [startYear, stopYear];
-        }).flat().filter(year => year !== 9999);
-        years.push(1991);
-        overallMinYearRef.current = Math.floor(d3.min(years) || 1991);
-        overallMaxYearRef.current = Math.max(Math.ceil(d3.max(years) || 1992), new Date().getFullYear());
-    }, [distroData, getYear]);
+        if (!svgRef.current || !containerRef.current || !distroData.length) return;
 
-    const render = useCallback((
-        gNode: d3.Selection<SVGGElement, unknown, null, undefined>,
-        gLink: d3.Selection<SVGGElement, unknown, null, undefined>,
-        gYearLines: d3.Selection<SVGGElement, unknown, null, undefined>,
-        treeLayout: d3.TreeLayout<DistroNode>,
-        diagonal: Function,
-        radiusScale: d3.ScaleLinear<number, number, never>,
-        maxRadius: number
-    ) => {
-        const duration = 600;
+        const width = containerRef.current.clientWidth;
+        const height = containerRef.current.clientHeight;
+        const radius = Math.max(width, height, 2400) / 2;
+
+        const svg = d3.select(svgRef.current)
+            .attr("width", width)
+            .attr("height", height)
+            .style("user-select", "none");
+
+        svg.selectAll("*").remove();
+        const gZoom = svg.append("g");
+
+        const radiusScale = d3.scaleLinear()
+            .domain([1991, new Date().getFullYear() + 2])
+            .range([0, radius - 100]);
+
+        const gYearLines = gZoom.append("g").attr("class", "year-lines");
+        const gLink = gZoom.append("g").attr("fill", "none");
+        const gNode = gZoom.append("g").attr("cursor", "pointer").attr("pointer-events", "all");
+
+        const zoom = d3.zoom().scaleExtent([0.05, 4]).on("zoom", (event) => gZoom.attr("transform", event.transform));
+        zoomRef.current = zoom;
+        svg.call(zoom as any);
+
+        const initialScale = Math.min(width, height) / (radius * 2.2);
+        svg.call(zoom.transform as any, d3.zoomIdentity.translate(width / 2, height / 2).scale(initialScale));
+
+        const treeLayout = d3.tree<DistroNode>().separation((a, b) => (a.parent == b.parent ? 1 : 2) / a.depth);
+        const diagonal = d3.linkRadial().angle((d: any) => d.x).radius((d: any) => d.y);
+
+        groupsRef.current = { gZoom, gYearLines, gLink, gNode, radiusScale, treeLayout, diagonal, radius };
+        
+        // Trigger first render
+        forceRender();
+    }, [distroData.length]);
+
+    // Smooth Update Loop
+    useEffect(() => {
+        if (!groupsRef.current || !distroData.length) return;
+        const { gNode, gLink, gYearLines, radiusScale, treeLayout, diagonal, radius } = groupsRef.current;
+        
+        const duration = 400; // Fast for "video" feel
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+        const search = searchTerm.trim().toLowerCase();
+        const focusId = selectedNode?.id;
 
+        // 1. Data Prep
         const baseDistros = distroData.filter((d) => {
             const startYear = getYear(d.start);
             const stopYear = d.stop ? getYear(d.stop) : 9999;
@@ -119,35 +139,8 @@ const RadialTree: React.FC = () => {
             }))
         ].sort((a, b) => parseDate(a.start).getTime() - parseDate(b.start).getTime());
 
-        const search = searchTerm.trim().toLowerCase();
-        const focusId = selectedNode?.id;
-
-        if (search || focusId) {
-            const visibleIds = new Set<string>();
-            try {
-                const stratifyFull = d3.stratify<DistroNode>().id((d) => d.id).parentId((d) => d.parentId || null);
-                const fullHierarchy = stratifyFull(dataForStratify);
-                const nodes = fullHierarchy.descendants();
-                const matches = nodes.filter(n =>
-                    (search && n.data.name.toLowerCase().includes(search)) || (focusId && n.id === focusId)
-                );
-                matches.forEach(m => {
-                    let curr: any = m;
-                    while (curr) { visibleIds.add(curr.id); curr = curr.parent; }
-                    m.descendants().forEach(d => visibleIds.add(d.id!));
-                });
-                dataForStratify = dataForStratify.filter(d => visibleIds.has(d.id));
-            } catch (e) {
-                console.warn("Filtering error", e);
-            }
-        }
-
-        if (dataForStratify.length === 0) {
-            dataForStratify = [{ id: 'Linux_Original', name: 'Linux', parent: null, isVirtual: false, start: '1991-09-17' }];
-        }
-
+        // 2. Stratify
         const currentVisibleIds = new Set(dataForStratify.map(d => d.id));
-
         const stratify = d3.stratify<DistroNode>()
             .id((d) => d.id)
             .parentId((d) => {
@@ -157,52 +150,56 @@ const RadialTree: React.FC = () => {
             });
 
         let root;
-        try {
-            root = stratify(dataForStratify);
-        } catch (e) {
-            console.error("Stratification failed", e);
-            return;
-        }
+        try { root = stratify(dataForStratify); } catch (e) { return; }
 
-        treeLayout.size([2 * Math.PI, maxRadius]);
+        treeLayout.size([2 * Math.PI, radius]);
         treeLayout(root);
 
         root.descendants().forEach(d => {
             const startYear = getYear(d.data.start);
-            const clampedYear = Math.max(overallMinYearRef.current, Math.min(overallMaxYearRef.current + 1, startYear));
-            d.y = radiusScale(clampedYear);
-            d.data.actualX = d.y;
+            d.y = radiusScale(Math.max(1991, Math.min(2026, startYear)));
         });
 
-        const yearsToDraw = d3.range(overallMinYearRef.current, overallMaxYearRef.current + 1, 5);
-        const yearCircleSelection = gYearLines.selectAll<SVGCircleElement, number>(".year-circle").data(yearsToDraw);
-        yearCircleSelection.exit().remove();
-        yearCircleSelection.enter().append("circle")
-            .attr("class", "year-circle")
-            .merge(yearCircleSelection)
-            .attr("cx", 0).attr("cy", 0)
-            .attr("r", d => radiusScale(d))
-            .attr("fill", "none").attr("stroke", "#ffffff").attr("stroke-opacity", 0.05).attr("stroke-dasharray", "2,2");
+        // 3. Year Rings (Static context)
+        const yearsToDraw = d3.range(1991, 2027, 5);
+        const yearCircles = gYearLines.selectAll(".year-circle").data(yearsToDraw);
+        yearCircles.enter().append("circle").attr("class", "year-circle")
+            .attr("fill", "none").attr("stroke", "#ffffff").attr("stroke-opacity", 0.05).attr("stroke-dasharray", "2,2")
+            .merge(yearCircles as any).attr("r", d => radiusScale(d));
 
-        const yearLabelSelection = gYearLines.selectAll<SVGTextElement, number>(".year-label").data(yearsToDraw);
-        yearLabelSelection.exit().remove();
-        yearLabelSelection.enter().append("text")
-            .attr("class", "year-label")
-            .merge(yearLabelSelection)
-            .attr("x", 0).attr("y", d => -radiusScale(d))
+        const yearLabels = gYearLines.selectAll(".year-label").data(yearsToDraw);
+        yearLabels.enter().append("text").attr("class", "year-label")
             .attr("dy", "0.35em").attr("text-anchor", "middle").attr("fill", "#ffffff").attr("fill-opacity", 0.3)
-            .style("font-size", "10px").style("font-weight", "bold").style("pointer-events", "none").text(d => d);
+            .style("font-size", "10px").style("font-weight", "bold").style("pointer-events", "none")
+            .merge(yearLabels as any).attr("y", d => -radiusScale(d)).text(d => d);
 
-        const nodes = root.descendants().reverse();
+        // 4. Links Join
         const links = root.links();
+        const link = gLink.selectAll("path").data(links, (d: any) => d.target.id);
+        
+        link.exit().transition().duration(duration).attr("stroke-opacity", 0).remove();
+
+        link.enter().append("path")
+            .attr("stroke", "#334155").attr("stroke-opacity", 0).attr("stroke-width", 1.5)
+            .attr("d", (d: any) => { const o = { x: d.source.x, y: d.source.y }; return diagonal({ source: o, target: o } as any); })
+            .transition().duration(duration).attr("stroke-opacity", 0.4)
+            .attr("d", diagonal as any);
+
+        link.transition().duration(duration)
+            .attr("d", diagonal as any)
+            .attr("stroke", "#06b6d4")
+            .attr("stroke-opacity", (search || focusId) ? 1 : 0.4);
+
+        // 5. Nodes Join
+        const nodes = root.descendants().reverse();
         const node = gNode.selectAll("g").data(nodes, (d: any) => d.id);
+
+        node.exit().transition().duration(duration).attr("fill-opacity", 0).remove();
+
         const nodeEnter = node.enter().append("g")
             .attr("transform", (d: any) => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0)`)
             .attr("fill-opacity", 0)
-            .on("click", (event, d: any) => {
-                setSelectedNode(d.data);
-                event.stopPropagation();
-            });
+            .on("click", (event, d: any) => { setSelectedNode(d.data); event.stopPropagation(); });
 
         nodeEnter.append("circle").attr("r", 6).attr("stroke", "#06b6d4").attr("stroke-width", 2);
         nodeEnter.append("text").attr("dy", "0.31em").style("font-size", "10px").style("font-weight", "600");
@@ -220,8 +217,7 @@ const RadialTree: React.FC = () => {
                 while (family.parent && family.parent.data.id !== 'Linux_Original') { family = family.parent; }
                 return colorScale(family.data.id);
             })
-            .attr("r", (d: any) => (search && d.data.name.toLowerCase().includes(search)) || (focusId === d.id) ? 10 : 6)
-            .attr("stroke", (d: any) => (search && d.data.name.toLowerCase().includes(search)) || (focusId === d.id) ? "#facc15" : "#06b6d4");
+            .attr("r", (d: any) => (search && d.data.name.toLowerCase().includes(search)) || (focusId === d.id) ? 10 : 6);
 
         nodeUpdate.select("text")
             .attr("transform", (d: any) => d.x >= Math.PI ? "rotate(180)" : null)
@@ -231,51 +227,19 @@ const RadialTree: React.FC = () => {
             .attr("fill", (d: any) => (search && d.data.name.toLowerCase().includes(search)) || (focusId === d.id) ? "#facc15" : "#cbd5e1")
             .text((d: any) => d.data.name);
 
-        node.exit().transition().duration(duration).remove().attr("fill-opacity", 0);
-
-        const link = gLink.selectAll("path").data(links, (d: any) => d.target.id);
-        const linkEnter = link.enter().append("path")
-            .attr("d", (d: any) => { const o = { x: d.source.x, y: d.source.y }; return diagonal({ source: o, target: o } as any); })
-            .attr("stroke", "#334155").attr("stroke-opacity", 0.4).attr("stroke-width", 1.5);
-
-        link.merge(linkEnter as any).transition().duration(duration)
-            .attr("d", diagonal as any)
-            .attr("stroke", "#06b6d4")
-            .attr("stroke-opacity", (search || focusId) ? 1 : 0.4)
-            .attr("stroke-width", (search || focusId) ? 2.5 : 1.5);
-
-        link.exit().transition().duration(duration).remove()
-            .attr("d", (d: any) => { const o = { x: d.source.x, y: d.source.y }; return diagonal({ source: o, target: o } as any); });
-    }, [distroData, searchTerm, selectedNode, showAll, getYear, parseDate]);
-
-    useEffect(() => {
-        if (!svgRef.current || !containerRef.current || !distroData.length) return;
-        const width = containerRef.current.clientWidth;
-        const height = containerRef.current.clientHeight;
-        const radius = Math.max(width, height, 2400) / 2;
-        const svg = d3.select(svgRef.current).attr("width", width).attr("height", height).style("user-select", "none");
-        svg.selectAll("*").remove();
-        const gZoom = svg.append("g");
-        gZoomRef.current = gZoom;
-        const radiusScale = d3.scaleLinear().domain([overallMinYearRef.current, overallMaxYearRef.current + 2]).range([0, radius - 100]);
-        const gYearLines = gZoom.append("g").attr("class", "year-lines");
-        const gLink = gZoom.append("g").attr("fill", "none");
-        const gNode = gZoom.append("g").attr("cursor", "pointer").attr("pointer-events", "all");
-        const zoom = d3.zoom().scaleExtent([0.05, 4]).on("zoom", (event) => gZoom.attr("transform", event.transform));
-        zoomRef.current = zoom;
-        svg.call(zoom as any);
-        const initialScale = Math.min(width, height) / (radius * 2.2);
-        svg.call(zoom.transform as any, d3.zoomIdentity.translate(width / 2, height / 2).scale(initialScale));
-        const treeLayout = d3.tree<DistroNode>().separation((a, b) => (a.parent == b.parent ? 1 : 2) / a.depth);
-        const diagonal = d3.linkRadial().angle((d: any) => d.x).radius((d: any) => d.y);
-        render(gNode, gLink, gYearLines, treeLayout, diagonal, radiusScale, radius);
-    }, [distroData, showAll, searchTerm, selectedNode, render]);
+    }, [distroData, searchTerm, selectedNode, showAll, getYear, parseDate, forceRender]);
 
     const handleResetZoom = () => {
         if (!svgRef.current || !containerRef.current || !zoomRef.current) return;
-        const width = containerRef.current.clientWidth;
-        const height = containerRef.current.clientHeight;
-        d3.select(svgRef.current).transition().duration(750).call(zoomRef.current.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.1));
+        d3.select(svgRef.current).transition().duration(750).call(zoomRef.current.transform, d3.zoomIdentity.translate(containerRef.current!.clientWidth / 2, containerRef.current!.clientHeight / 2).scale(0.1));
+    };
+
+    const handleReset = () => {
+        setSearchTerm('');
+        setShowAll(false);
+        setSelectedNode(null);
+        setTimelineYear(overallMaxYearRef.current);
+        handleResetZoom();
     };
 
     if (isLoading) {
@@ -310,7 +274,7 @@ const RadialTree: React.FC = () => {
                     </div>
                 </div>
                 <div className="w-[32rem]">
-                    <TimelineControls minYear={overallMinYearRef.current} maxYear={overallMaxYearRef.current} currentYear={timelineYear.current} onYearChange={setTimelineYear} />
+                    <TimelineControls minYear={1991} maxYear={2026} currentYear={timelineYear.current} onYearChange={setTimelineYear} />
                 </div>
             </div>
             <div className="absolute top-8 right-8 z-20">
@@ -345,11 +309,7 @@ const RadialTree: React.FC = () => {
                         <div className="text-sm text-slate-300 leading-relaxed max-h-48 overflow-y-auto mb-10 pr-4 scrollbar-thin scrollbar-thumb-slate-800">
                             {selectedNode.description || 'Historical data indexing in progress.'}
                         </div>
-                        <div className="flex flex-wrap gap-2 mb-10">
-                            {selectedNode.origin && <span className="bg-slate-900/50 border border-slate-800 text-slate-400 text-[10px] font-black px-4 py-2 rounded-xl">{selectedNode.origin}</span>}
-                            {selectedNode.architecture && <span className="bg-slate-900/50 border border-slate-800 text-slate-400 text-[10px] font-black px-4 py-2 rounded-xl">{selectedNode.architecture}</span>}
-                        </div>
-                        <a href={getDistroWatchUrl(selectedNode.name, selectedNode.url)} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 w-full py-5 bg-cyan-500 hover:bg-cyan-400 text-white rounded-[2rem] font-black text-xs tracking-widest transition-all shadow-2xl shadow-cyan-500/20">
+                        <a href={`https://distrowatch.com/table.php?distribution=${selectedNode.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 w-full py-5 bg-cyan-500 hover:bg-cyan-400 text-white rounded-[2rem] font-black text-xs tracking-widest transition-all shadow-2xl shadow-cyan-500/20">
                             VIEW PROJECT ORIGINS
                             <ExternalLink className="w-4 h-4" />
                         </a>
