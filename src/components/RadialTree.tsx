@@ -62,6 +62,8 @@ const RadialTree: React.FC = () => {
 
         const width = containerRef.current.clientWidth;
         const height = containerRef.current.clientHeight;
+        if (width === 0 || height === 0) return;
+
         const radius = Math.max(width, height, 2400) / 2;
 
         // 1. Setup Groups if missing
@@ -152,9 +154,9 @@ const RadialTree: React.FC = () => {
 
         // Links
         const links = root.links();
-        const linkSelection = gLink.selectAll("path").data(links, (d: any) => d.target.id);
+        const linkSelection = gLink.selectAll("path.radial-link").data(links, (d: any) => d.target.id);
         linkSelection.exit().transition().duration(duration).attr("stroke-opacity", 0).remove();
-        linkSelection.enter().append("path")
+        linkSelection.enter().append("path").attr("class", "radial-link")
             .attr("stroke", "#334155").attr("stroke-opacity", 0).attr("stroke-width", 1.5)
             .attr("d", (d: any) => { const o = { x: d.source.x, y: d.source.y }; return diagonal({ source: o, target: o } as any); })
             .merge(linkSelection as any).transition().duration(duration)

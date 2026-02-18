@@ -40,7 +40,7 @@ const FamilyTree: React.FC = () => {
         if (svgRef.current && zoomRef.current) {
             d3.select(svgRef.current).transition().duration(750).call(
                 zoomRef.current.transform,
-                d3.zoomIdentity.translate(0, 0).scale(0.8)
+                d3.zoomIdentity.translate(50, 50).scale(0.6)
             );
         }
     };
@@ -74,12 +74,13 @@ const FamilyTree: React.FC = () => {
     useEffect(() => {
         if (!svgRef.current || !containerRef.current || !fixedData.length) return;
 
-        const container = containerRef.current;
-        const width = container.clientWidth;
-        const height = container.clientHeight;
-        const margin = { top: 80, right: 50, bottom: 80, left: 50 };
-        const chartWidth = width - margin.left - margin.right;
-        const chartHeight = height - margin.top - margin.bottom;
+        const width = containerRef.current.clientWidth;
+        const height = containerRef.current.clientHeight;
+        if (width === 0 || height === 0) return;
+
+        const margin = { top: 100, right: 100, bottom: 100, left: 100 };
+        const chartWidth = Math.max(width - margin.left - margin.right, 1200);
+        const chartHeight = Math.max(height - margin.top - margin.bottom, 800);
 
         // 1. Setup Groups if missing
         if (!groupsRef.current) {
@@ -93,7 +94,7 @@ const FamilyTree: React.FC = () => {
             const gNode = gZoom.append('g').attr('class', 'nodes');
 
             const zoom = d3.zoom<SVGSVGElement, unknown>()
-                .scaleExtent([0.1, 4])
+                .scaleExtent([0.05, 4])
                 .on('zoom', (event) => {
                     gZoom.attr('transform', event.transform);
                     gZoom.selectAll('.year-label-major').style('font-size', (12 / event.transform.k) + 'px');
@@ -102,8 +103,8 @@ const FamilyTree: React.FC = () => {
             zoomRef.current = zoom;
             svg.call(zoom).on('click', () => { setSelectedNode(null); });
 
-            const initialScale = 0.8;
-            svg.call(zoom.transform as any, d3.zoomIdentity.translate((width - chartWidth * initialScale) / 2, 0).scale(initialScale));
+            // Initial view
+            svg.call(zoom.transform as any, d3.zoomIdentity.translate(margin.left, margin.top).scale(0.6));
 
             const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 1.5 : 2.5));
 
@@ -121,8 +122,8 @@ const FamilyTree: React.FC = () => {
         gridLines.enter().append('line')
             .attr('stroke', '#1e293b').attr('stroke-width', (d: any) => d % 10 === 0 ? 2 : 1).attr('stroke-opacity', (d: any) => d % 10 === 0 ? 0.5 : 0.3)
             .merge(gridLines as any)
-            .attr('x1', (d: any) => xScale(d) + margin.left).attr('x2', (d: any) => xScale(d) + margin.left)
-            .attr('y1', margin.top).attr('y2', height - margin.bottom);
+            .attr('x1', (d: any) => xScale(d)).attr('x2', (d: any) => xScale(d))
+            .attr('y1', 0).attr('y2', chartHeight);
 
         const gridLabels = gGrid.selectAll('text').data(yearsToDraw.flatMap(y => [{y, pos:'top'}, {y, pos:'bottom'}]));
         gridLabels.enter().append('text')
@@ -130,8 +131,8 @@ const FamilyTree: React.FC = () => {
             .attr('text-anchor', 'middle').attr('fill', '#64748b')
             .style('font-size', (d: any) => d.y % 10 === 0 ? '12px' : '10px').style('font-weight', (d: any) => d.y % 10 === 0 ? 'bold' : 'normal')
             .merge(gridLabels as any)
-            .attr('x', (d: any) => xScale(d.y) + margin.left)
-            .attr('y', (d: any) => d.pos === 'top' ? margin.top - 10 : height - margin.bottom + 25)
+            .attr('x', (d: any) => xScale(d.y))
+            .attr('y', (d: any) => d.pos === 'top' ? -20 : chartHeight + 30)
             .text((d: any) => d.y);
 
         // Data Prep
@@ -166,15 +167,16 @@ const FamilyTree: React.FC = () => {
         
         treeLayout(root);
         root.descendants().forEach((node: any) => {
-            const verticalPos = node.x; 
-            node.x = xScale(getYear(node.data.start)) + margin.left; 
-            node.y = verticalPos + margin.top; 
+            const verticalLayoutPos = node.x; 
+            node.x = xScale(getYear(node.data.start)); 
+            node.y = verticalLayoutPos; 
         });
 
         // Update Links
-        const linkSelection = gLink.selectAll('path.link').data(root.links(), (d: any) => d.target.data.id);
+        const links = root.links();
+        const linkSelection = gLink.selectAll('path.link-path').data(links, (d: any) => d.target.data.id);
         linkSelection.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
-        linkSelection.enter().append('path').attr('class', 'link')
+        linkSelection.enter().append('path').attr('class', 'link-path')
             .attr('fill', 'none').attr('stroke', '#475569').attr('stroke-width', 2).attr('stroke-opacity', 0)
             .merge(linkSelection as any).transition().duration(duration)
             .attr('stroke-opacity', (d: any) => !selectedNode ? 0.6 : (relatedIds.has(d.source.data.id) && relatedIds.has(d.target.data.id) ? 0.8 : 0.1))
@@ -184,9 +186,11 @@ const FamilyTree: React.FC = () => {
             });
 
         // Update Nodes
-        const nodeSelection = gNode.selectAll('g.node').data(root.descendants(), (d: any) => d.data.id);
+        const nodes = root.descendants();
+        const nodeSelection = gNode.selectAll('g.node-group').data(nodes, (d: any) => d.data.id);
         nodeSelection.exit().transition().duration(duration).attr('opacity', 0).remove();
-        const nodeEnter = nodeSelection.enter().append('g').attr('class', 'node').attr('cursor', 'pointer').attr('opacity', 0)
+        
+        const nodeEnter = nodeSelection.enter().append('g').attr('class', 'node-group').attr('cursor', 'pointer').attr('opacity', 0)
             .on('click', (event: any, d: any) => {
                 event.stopPropagation();
                 if (d.data.isVirtual) return;
