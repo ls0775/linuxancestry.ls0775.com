@@ -176,7 +176,11 @@ def transform_distros(raw_data: List[Dict]) -> List[Dict]:
             # OR if based_on/description specifically mentions Ubuntu
             based_on = distro.get('based_on', '')
             desc = distro.get('description', '')
-            if 'Ubuntu' in distro['name'] or 'Ubuntu' in based_on or 'Ubuntu-based' in desc or 'based on Ubuntu' in desc:
+            
+            # Targeted Ubuntu flavor check: Kubuntu, Lubuntu, Xubuntu, Ubuntu Studio, etc.
+            is_ubuntu_flavor = any(f in distro['name'] for f in ['Kubuntu', 'Lubuntu', 'Xubuntu', 'Ubuntu Studio', 'Ubuntu MATE', 'Ubuntu Kylin', 'Ubuntu Budgie', 'Ubuntu Unity', 'Ubuntu Cinnamon', 'Edubuntu'])
+            
+            if is_ubuntu_flavor or 'Ubuntu' in based_on or 'Ubuntu-based' in desc or 'based on Ubuntu' in desc:
                 if parent != 'ubuntu' and 'ubuntu' in distro_ids:
                     parent = 'ubuntu'
 
