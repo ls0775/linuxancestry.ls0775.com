@@ -216,10 +216,15 @@ const FamilyTree: React.FC = () => {
             filteredData = [{ id: '__virtual_root__', name: 'Linux Origins', isVirtual: true, parent: null, start: '1991-01-01' }];
         }
 
+        const currentVisibleIds = new Set(filteredData.map(d => d.id));
+
         // Create hierarchy
         const stratify = d3.stratify<DistroNode>()
             .id(d => d.id)
-            .parentId(d => d.parent || null);
+            .parentId(d => {
+                if (d.id === '__virtual_root__') return null;
+                return (d.parent && currentVisibleIds.has(d.parent)) ? d.parent : '__virtual_root__';
+            });
 
         let root;
         try {

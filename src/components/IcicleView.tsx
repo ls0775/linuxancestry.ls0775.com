@@ -56,9 +56,14 @@ const IcicleView: React.FC = () => {
         const virtualRoot: any = { id: '__virtual_root__', name: 'Linux Ecosystem', isVirtual: true, parent: null };
         const stratifyData = filteredData.length === 0 ? [virtualRoot] : [virtualRoot, ...filteredData];
 
+        const currentVisibleIds = new Set(stratifyData.map(d => d.id));
+
         const stratify = d3.stratify<DistroNode>()
             .id(d => d.id)
-            .parentId(d => (!d.parent || !visibleIds.has(d.parent)) ? (d.id === '__virtual_root__' ? null : '__virtual_root__') : d.parent);
+            .parentId(d => {
+                if (d.id === '__virtual_root__') return null;
+                return (d.parent && currentVisibleIds.has(d.parent)) ? d.parent : '__virtual_root__';
+            });
 
         let root;
         try {

@@ -146,9 +146,15 @@ const RadialTree: React.FC = () => {
             dataForStratify = [{ id: 'Linux_Original', name: 'Linux', parent: null, isVirtual: false, start: '1991-09-17' }];
         }
 
+        const currentVisibleIds = new Set(dataForStratify.map(d => d.id));
+
         const stratify = d3.stratify<DistroNode>()
             .id((d) => d.id)
-            .parentId((d) => d.parent || d.parentId || null);
+            .parentId((d) => {
+                if (d.id === 'Linux_Original') return null;
+                const pid = d.parent || d.parentId;
+                return (pid && currentVisibleIds.has(pid)) ? pid : 'Linux_Original';
+            });
 
         let root;
         try {

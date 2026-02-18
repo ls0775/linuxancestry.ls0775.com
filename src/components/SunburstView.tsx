@@ -77,7 +77,14 @@ const SunburstView: React.FC = () => {
             filteredData = [{ id: '__virtual_root__', name: 'Linux', isVirtual: true, parent: null, color: '#64748b' }];
         }
 
-        const stratify = d3.stratify<DistroNode>().id(d => d.id).parentId(d => d.parent || null);
+        const currentVisibleIds = new Set(filteredData.map(d => d.id));
+
+        const stratify = d3.stratify<DistroNode>()
+            .id(d => d.id)
+            .parentId(d => {
+                if (d.id === '__virtual_root__') return null;
+                return (d.parent && currentVisibleIds.has(d.parent)) ? d.parent : '__virtual_root__';
+            });
         let root;
         try {
             root = stratify(filteredData);
