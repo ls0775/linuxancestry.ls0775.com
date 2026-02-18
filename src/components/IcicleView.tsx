@@ -118,13 +118,15 @@ const IcicleView: React.FC = () => {
             children: []
         };
 
+        const stratifyData = filteredData.length === 0 ? [virtualRoot] : [virtualRoot, ...filteredData];
+
         const stratify = d3.stratify<DistroNode>()
             .id(d => d.id)
-            .parentId(d => (!d.parent || !visibleIds.has(d.parent)) ? '__virtual_root__' : d.parent);
+            .parentId(d => (!d.parent || !visibleIds.has(d.parent)) ? (d.id === '__virtual_root__' ? null : '__virtual_root__') : d.parent);
 
         let root;
         try {
-            root = stratify([virtualRoot, ...filteredData]);
+            root = stratify(stratifyData);
         } catch (e) {
             console.error('Icicle stratification error:', e);
             return;

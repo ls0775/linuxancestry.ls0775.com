@@ -272,6 +272,10 @@ const RadialTree: React.FC = () => {
 
         dataForStratify.forEach((d: any) => hasCycle(d.id));
 
+        if (dataForStratify.length === 0) {
+            dataForStratify = [{ id: '__virtual_root__', name: 'Linux Origins', isVirtual: true, parent: null, parentId: null, start: '1991-01-01' }];
+        }
+
         const stratify = d3.stratify<DistroNode>()
             .id((d) => d.id)
             .parentId((d) => d.parent || d.parentId || null);

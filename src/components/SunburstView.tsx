@@ -170,6 +170,10 @@ const SunburstView: React.FC = () => {
 
         filteredData.forEach(d => hasCycle(d.id));
 
+        if (filteredData.length === 0) {
+            filteredData = [{ id: '__virtual_root__', name: 'Linux', isVirtual: true, parent: null, color: '#64748b' }];
+        }
+
         // Create hierarchy
         const stratify = d3.stratify<DistroNode>()
             .id(d => d.id)

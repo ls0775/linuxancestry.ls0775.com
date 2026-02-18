@@ -267,6 +267,10 @@ const FamilyTree: React.FC = () => {
 
         filteredData.forEach(d => hasCycle(d.id));
 
+        if (filteredData.length === 0) {
+            filteredData = [{ id: '__virtual_root__', name: 'Linux Origins', isVirtual: true, parent: null, start: '1991-01-01' }];
+        }
+
         // Create hierarchy
         const stratify = d3.stratify<DistroNode>()
             .id(d => d.id)
