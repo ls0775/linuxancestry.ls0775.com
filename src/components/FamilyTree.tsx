@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useReducer } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Search, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -9,15 +9,17 @@ const FamilyTree: React.FC = () => {
     const { data: fixedData, isLoading } = useDistroData();
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    
+    // State
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
     const [showAll, setShowAll] = useState(false);
-
+    
     const currentYear = new Date().getFullYear();
     const [timelineYear, setTimelineYear] = useState(currentYear);
-    const forceRender = useReducer(x => x + 1, 0)[1];
 
+    // D3 Persistence
     const zoomRef = useRef<any>(null);
     const groupsRef = useRef<{
         gZoom: any,
@@ -68,8 +70,10 @@ const FamilyTree: React.FC = () => {
         return date.getFullYear() + (dayOfYear / 366);
     }, [parseDate]);
 
+    // 1. One-time Setup
     useEffect(() => {
         if (!svgRef.current || !containerRef.current || !fixedData.length) return;
+
         const container = containerRef.current;
         const width = container.clientWidth;
         const height = container.clientHeight;
@@ -98,11 +102,13 @@ const FamilyTree: React.FC = () => {
 
         const initialScale = 0.8;
         svg.call(zoom.transform as any, d3.zoomIdentity.translate((width - chartWidth * initialScale) / 2, 0).scale(initialScale));
-        const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 1.5 : 2.5));
-        groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, margin };
-        forceRender();
-    }, [fixedData.length, currentYear, forceRender]);
 
+        const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 1.5 : 2.5));
+
+        groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, margin };
+    }, [fixedData.length, currentYear]);
+
+    // 2. Smooth Update Loop
     useEffect(() => {
         if (!groupsRef.current || !fixedData.length || !containerRef.current) return;
         const { gGrid, gLink, gNode, xScale, treeLayout, margin } = groupsRef.current;
@@ -128,6 +134,7 @@ const FamilyTree: React.FC = () => {
             .attr('y', (d: any) => d.pos === 'top' ? margin.top - 10 : height - margin.bottom + 25)
             .text((d: any) => d.y);
 
+        // Data Filtering
         let filteredData = fixedData.filter(d => {
             const startYear = getYear(d.start);
             if (startYear > timelineYear + 0.999) return false;
@@ -136,6 +143,7 @@ const FamilyTree: React.FC = () => {
             return true;
         });
 
+        // Lineage Focus
         const relatedIds = new Set<string>();
         if (selectedNode) {
             const idMap = new Map(fixedData.map(d => [d.id, d]));
@@ -159,11 +167,12 @@ const FamilyTree: React.FC = () => {
         
         treeLayout(root);
         root.descendants().forEach((node: any) => {
-            const layoutY = node.x;
-            node.x = xScale(getYear(node.data.start)) + margin.left;
-            node.y = layoutY + margin.top;
+            const verticalPos = node.x; 
+            node.x = xScale(getYear(node.data.start)) + margin.left; 
+            node.y = verticalPos + margin.top; 
         });
 
+        // Link Join
         const link = gLink.selectAll('path.link').data(root.links(), (d: any) => d.target.data.id);
         link.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
         link.enter().append('path').attr('class', 'link')
@@ -175,6 +184,7 @@ const FamilyTree: React.FC = () => {
                 return `M ${d.source.x},${d.source.y} H ${midX} V ${d.target.y} H ${d.target.x}`;
             });
 
+        // Node Join
         const nodeSelection = gNode.selectAll('g.node').data(root.descendants(), (d: any) => d.data.id);
         nodeSelection.exit().transition().duration(duration).attr('opacity', 0).remove();
         const nodeEnter = nodeSelection.enter().append('g').attr('class', 'node').attr('cursor', 'pointer').attr('opacity', 0)
