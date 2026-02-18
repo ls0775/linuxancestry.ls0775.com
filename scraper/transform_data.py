@@ -370,7 +370,7 @@ def main():
     print(f"Saving to {output_path}...")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(transformed, f, indent=2, ensure_ascii=False)
+        json.dump(transformed, f, indent=None, ensure_ascii=False)
     
     print()
     print("=" * 60)

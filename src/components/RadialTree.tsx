@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useReducer } from 'react';
 import * as d3 from 'd3';
-import distroData from '../data/distros.json';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ExternalLink, Calendar, Search, Maximize2, Info, X } from 'lucide-react';
 import TimelineControls from './TimelineControls';
@@ -24,8 +23,25 @@ interface DistroNode {
 }
 
 const RadialTree: React.FC = () => {
+    const [distroData, setDistroData] = useState<DistroNode[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        fetch('/distros.json')
+            .then(res => res.json())
+            .then(data => {
+                setDistroData(data);
+                setIsLoading(false);
+            })
+            .catch(err => {
+                console.error('Failed to load distro data:', err);
+                setIsLoading(false);
+            });
+    }, []);
+
     // Sanitize data: fix known issues in source JSON
     const fixedData = React.useMemo(() => {
+        if (!distroData.length) return [];
         const data = (distroData as DistroNode[]).map(d => ({ ...d }));
         const idMap = new Map(data.map(d => [d.id, d]));
 
@@ -62,6 +78,14 @@ const RadialTree: React.FC = () => {
     const gZoomRef = useRef<any>(null);
     const overallMinYearRef = useRef<number>(1992); // Default
     const overallMaxYearRef = useRef<number>(new Date().getFullYear()); // Default
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
 
     const getDistroWatchUrl = (name: string, url?: string) => {
         if (url && url.includes('distrowatch.com')) return url;

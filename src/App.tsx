@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import FamilyTree from './components/FamilyTree'
-import RadialTree from './components/RadialTree'
-import SunburstView from './components/SunburstView'
-import IndentedList from './components/IndentedList'
+import { useState, lazy, Suspense } from 'react'
 import './App.css'
+
+const FamilyTree = lazy(() => import('./components/FamilyTree'));
+const RadialTree = lazy(() => import('./components/RadialTree'));
+const SunburstView = lazy(() => import('./components/SunburstView'));
+const IndentedList = lazy(() => import('./components/IndentedList'));
 
 function App() {
   const [viewMode, setViewMode] = useState<'tree' | 'radial' | 'sunburst' | 'list'>('radial');
@@ -56,10 +57,16 @@ function App() {
       </header>
 
       <main className="pt-20 h-screen w-full">
-        {viewMode === 'tree' && <FamilyTree />}
-        {viewMode === 'radial' && <RadialTree />}
-        {viewMode === 'sunburst' && <SunburstView />}
-        {viewMode === 'list' && <IndentedList />}
+        <Suspense fallback={
+          <div className="flex items-center justify-center h-full">
+            <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        }>
+          {viewMode === 'tree' && <FamilyTree />}
+          {viewMode === 'radial' && <RadialTree />}
+          {viewMode === 'sunburst' && <SunburstView />}
+          {viewMode === 'list' && <IndentedList />}
+        </Suspense>
       </main>
 
       <footer className="fixed bottom-4 left-6 z-10 hidden md:block">

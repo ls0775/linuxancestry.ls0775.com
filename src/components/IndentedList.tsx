@@ -1,8 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import * as d3 from 'd3';
 import { Search, ChevronRight, ChevronDown, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import distroData from '../data/distros.json';
 
 interface DistroNode {
     id: string;
@@ -25,11 +24,35 @@ interface TreeNode extends DistroNode {
 }
 
 const IndentedList: React.FC = () => {
+    const [distroData, setDistroData] = useState<DistroNode[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        fetch('/distros.json')
+            .then(res => res.json())
+            .then(data => {
+                setDistroData(data);
+                setIsLoading(false);
+            })
+            .catch(err => {
+                console.error('Failed to load distro data:', err);
+                setIsLoading(false);
+            });
+    }, []);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [showAll, setShowAll] = useState(false);
     const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['__virtual_root__']));
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
 
     const getDistroWatchUrl = (name: string, url?: string) => {
         if (url && url.includes('distrowatch.com')) return url;

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import { Search, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import distroData from '../data/distros.json';
 
 interface DistroNode {
     id: string;
@@ -22,8 +21,25 @@ interface DistroNode {
 }
 
 const SunburstView: React.FC = () => {
+    const [distroData, setDistroData] = useState<DistroNode[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        fetch('/distros.json')
+            .then(res => res.json())
+            .then(data => {
+                setDistroData(data);
+                setIsLoading(false);
+            })
+            .catch(err => {
+                console.error('Failed to load distro data:', err);
+                setIsLoading(false);
+            });
+    }, []);
+
     // Sanitize data
     const fixedData = useMemo(() => {
+        if (!distroData.length) return [];
         const data = (distroData as DistroNode[]).map(d => ({ ...d }));
         const idMap = new Map(data.map(d => [d.id, d]));
 
@@ -51,6 +67,14 @@ const SunburstView: React.FC = () => {
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [showAll, setShowAll] = useState(false);
     const [focusedPath, setFocusedPath] = useState<any>(null);
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
 
     const getDistroWatchUrl = (name: string, url?: string) => {
         if (url && url.includes('distrowatch.com')) return url;
