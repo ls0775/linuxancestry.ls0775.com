@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, useReducer, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useReducer } from 'react';
 import * as d3 from 'd3';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ExternalLink, Calendar, Search, Maximize2, X } from 'lucide-react';
@@ -34,7 +34,6 @@ const RadialTree: React.FC = () => {
         radius: number
     } | null>(null);
 
-    const overallMinYearRef = useRef<number>(1991);
     const overallMaxYearRef = useRef<number>(new Date().getFullYear());
 
     const getLogoUrl = (node: DistroNode) => {
@@ -94,13 +93,11 @@ const RadialTree: React.FC = () => {
         svg.call(zoom.transform as any, d3.zoomIdentity.translate(width / 2, height / 2).scale(initialScale));
 
         const treeLayout = d3.tree<DistroNode>().separation((a, b) => (a.parent == b.parent ? 1 : 2) / a.depth);
-        const diagonal = d3.linkRadial().angle((d: any) => d.x).radius((d: any) => d.y);
+        const diagonal = d3.linkRadial<any, any>().angle((d: any) => d.x).radius((d: any) => d.y);
 
         groupsRef.current = { gZoom, gYearLines, gLink, gNode, radiusScale, treeLayout, diagonal, radius };
-        
-        // Trigger first render
         forceRender();
-    }, [distroData.length]);
+    }, [distroData.length, forceRender]);
 
     // Smooth Update Loop
     useEffect(() => {
@@ -149,7 +146,7 @@ const RadialTree: React.FC = () => {
                 return (pid && currentVisibleIds.has(pid)) ? pid : 'Linux_Original';
             });
 
-        let root;
+        let root: d3.HierarchyNode<DistroNode>;
         try { root = stratify(dataForStratify); } catch (e) { return; }
 
         treeLayout.size([2 * Math.PI, radius]);
@@ -160,51 +157,51 @@ const RadialTree: React.FC = () => {
             d.y = radiusScale(Math.max(1991, Math.min(2026, startYear)));
         });
 
-        // 3. Year Rings (Static context)
+        // 3. Year Rings
         const yearsToDraw = d3.range(1991, 2027, 5);
-        const yearCircles = gYearLines.selectAll(".year-circle").data(yearsToDraw);
+        const yearCircles = gYearLines.selectAll('circle.year-circle').data(yearsToDraw);
         yearCircles.enter().append("circle").attr("class", "year-circle")
             .attr("fill", "none").attr("stroke", "#ffffff").attr("stroke-opacity", 0.05).attr("stroke-dasharray", "2,2")
-            .merge(yearCircles as any).attr("r", d => radiusScale(d));
+            .merge(yearCircles as any).attr("r", (d: number) => radiusScale(d));
 
-        const yearLabels = gYearLines.selectAll(".year-label").data(yearsToDraw);
+        const yearLabels = gYearLines.selectAll('text.year-label').data(yearsToDraw);
         yearLabels.enter().append("text").attr("class", "year-label")
             .attr("dy", "0.35em").attr("text-anchor", "middle").attr("fill", "#ffffff").attr("fill-opacity", 0.3)
             .style("font-size", "10px").style("font-weight", "bold").style("pointer-events", "none")
-            .merge(yearLabels as any).attr("y", d => -radiusScale(d)).text(d => d);
+            .merge(yearLabels as any).attr("y", (d: number) => -radiusScale(d)).text((d: number) => d);
 
         // 4. Links Join
         const links = root.links();
-        const link = gLink.selectAll("path").data(links, (d: any) => d.target.id);
+        const linkSelection = gLink.selectAll("path").data(links, (d: any) => d.target.id);
         
-        link.exit().transition().duration(duration).attr("stroke-opacity", 0).remove();
+        linkSelection.exit().transition().duration(duration).attr("stroke-opacity", 0).remove();
 
-        link.enter().append("path")
+        linkSelection.enter().append("path")
             .attr("stroke", "#334155").attr("stroke-opacity", 0).attr("stroke-width", 1.5)
             .attr("d", (d: any) => { const o = { x: d.source.x, y: d.source.y }; return diagonal({ source: o, target: o } as any); })
             .transition().duration(duration).attr("stroke-opacity", 0.4)
             .attr("d", diagonal as any);
 
-        link.transition().duration(duration)
+        linkSelection.transition().duration(duration)
             .attr("d", diagonal as any)
             .attr("stroke", "#06b6d4")
             .attr("stroke-opacity", (search || focusId) ? 1 : 0.4);
 
         // 5. Nodes Join
         const nodes = root.descendants().reverse();
-        const node = gNode.selectAll("g").data(nodes, (d: any) => d.id);
+        const nodeSelection = gNode.selectAll("g").data(nodes, (d: any) => d.id);
 
-        node.exit().transition().duration(duration).attr("fill-opacity", 0).remove();
+        nodeSelection.exit().transition().duration(duration).attr("fill-opacity", 0).remove();
 
-        const nodeEnter = node.enter().append("g")
+        const nodeEnter = nodeSelection.enter().append("g")
             .attr("transform", (d: any) => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0)`)
             .attr("fill-opacity", 0)
-            .on("click", (event, d: any) => { setSelectedNode(d.data); event.stopPropagation(); });
+            .on("click", (event: any, d: any) => { setSelectedNode(d.data); event.stopPropagation(); });
 
         nodeEnter.append("circle").attr("r", 6).attr("stroke", "#06b6d4").attr("stroke-width", 2);
         nodeEnter.append("text").attr("dy", "0.31em").style("font-size", "10px").style("font-weight", "600");
 
-        const nodeUpdate = node.merge(nodeEnter as any).transition().duration(duration)
+        const nodeUpdate = nodeSelection.merge(nodeEnter as any).transition().duration(duration)
             .attr("transform", (d: any) => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0)`)
             .attr("fill-opacity", 1);
 
@@ -242,13 +239,7 @@ const RadialTree: React.FC = () => {
         handleResetZoom();
     };
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-        );
-    }
+    if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
     return (
         <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-[#0f172a]">
