@@ -95,29 +95,33 @@ def normalize_parent_name(parent: str, distro_names: set) -> Optional[str]:
         return None
     
     parent = parent.strip()
-    
-    # Direct match
     parent_lower = parent.lower()
+    
+    # 1. Direct match
     if parent_lower in distro_names:
         return parent_lower
     
-    # Try first word
-    first_word = parent.split()[0].lower()
-    if first_word in distro_names:
-        return first_word
+    # 2. Try common variants/sub-strings
+    # e.g., "Arch Linux" -> "arch"
+    clean_variants = [
+        parent_lower.replace(' linux', '').strip(),
+        parent_lower.replace(' gnu/linux', '').strip(),
+        parent_lower.replace(' os', '').strip(),
+        re.sub(r'\(.*?\)', '', parent_lower).strip(), # remove things like "(stable)"
+    ]
     
-    # Try removing common suffixes
-    for suffix in [' GNU/Linux', ' Linux', ' OS']:
-        if parent.endswith(suffix):
-            cleaned = parent[:-len(suffix)].lower()
-            if cleaned in distro_names:
-                return cleaned
-    
-    # Try fuzzy matching
-    for name in distro_names:
-        if name in parent_lower or parent_lower in name:
-            return name
-    
+    for variant in clean_variants:
+        if variant in distro_names:
+            return variant
+            
+    # 3. Word-by-word fallback (Aggressive)
+    # Check if any single word in the parent name is a known distro
+    # Useful for "Based on: Debian (Stable), Ubuntu (LTS)"
+    words = re.findall(r'[a-z0-9]+', parent_lower)
+    for word in words:
+        if word in distro_names and word not in ['linux', 'gnu', 'independent', 'fork']:
+            return word
+            
     return None
 
 
