@@ -79,8 +79,8 @@ const FamilyTree: React.FC = () => {
         if (width === 0 || height === 0) return;
 
         const margin = { top: 100, right: 100, bottom: 100, left: 100 };
-        const chartWidth = 3000; // Wide for timeline
-        const chartHeight = 1600; // Tall for families
+        const chartWidth = 5000; 
+        const chartHeight = 6000;
 
         if (!groupsRef.current) {
             const svg = d3.select(svgRef.current).attr('width', width).attr('height', height);
@@ -93,7 +93,7 @@ const FamilyTree: React.FC = () => {
             const gNode = gZoom.append('g').attr('class', 'nodes');
 
             const zoom = d3.zoom<SVGSVGElement, unknown>()
-                .scaleExtent([0.05, 4])
+                .scaleExtent([0.01, 4])
                 .on('zoom', (event) => {
                     gZoom.attr('transform', event.transform);
                     gZoom.selectAll('.year-label-major').style('font-size', (12 / event.transform.k) + 'px');
@@ -103,9 +103,9 @@ const FamilyTree: React.FC = () => {
             svg.call(zoom).on('click', () => { setSelectedNode(null); });
 
             // Initial view
-            svg.call(zoom.transform as any, d3.zoomIdentity.translate(50, height/4).scale(0.2));
+            svg.call(zoom.transform as any, d3.zoomIdentity.translate(50, height/2).scale(0.15));
 
-            const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 1.5 : 2.5));
+            const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 2.5 : 5));
 
             groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, margin };
         }
@@ -115,7 +115,7 @@ const FamilyTree: React.FC = () => {
     useEffect(() => {
         if (!groupsRef.current || !distroData.length) return;
         const { gGrid, gLink, gNode, xScale, treeLayout, margin } = groupsRef.current;
-        const chartHeight = 1600;
+        const chartHeight = 6000;
         const duration = 400;
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
         const search = searchTerm.trim().toLowerCase();

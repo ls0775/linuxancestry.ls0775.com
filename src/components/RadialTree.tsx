@@ -64,7 +64,7 @@ const RadialTree: React.FC = () => {
         const height = containerRef.current.clientHeight;
         if (width === 0 || height === 0) return;
 
-        const radius = Math.max(width, height, 2400) / 2;
+        const radius = 5000 / 2;
 
         // 1. Setup Groups if missing
         if (!groupsRef.current) {
@@ -84,14 +84,14 @@ const RadialTree: React.FC = () => {
             const gLink = gZoom.append("g").attr("fill", "none");
             const gNode = gZoom.append("g").attr("cursor", "pointer").attr("pointer-events", "all");
 
-            const zoom = d3.zoom().scaleExtent([0.05, 4]).on("zoom", (event) => gZoom.attr("transform", event.transform));
+            const zoom = d3.zoom().scaleExtent([0.01, 4]).on("zoom", (event) => gZoom.attr("transform", event.transform));
             zoomRef.current = zoom;
             svg.call(zoom as any);
 
-            const initialScale = Math.min(width, height) / (radius * 2.2);
+            const initialScale = 0.1;
             svg.call(zoom.transform as any, d3.zoomIdentity.translate(width / 2, height / 2).scale(initialScale));
 
-            const treeLayout = d3.tree<DistroNode>().separation((a, b) => (a.parent == b.parent ? 1 : 2) / a.depth);
+            const treeLayout = d3.tree<DistroNode>().separation((a, b) => (a.parent === b.parent ? 2 : 4));
             const diagonal = d3.linkRadial<any, any>().angle((d: any) => d.x).radius((d: any) => d.y);
 
             groupsRef.current = { gZoom, gYearLines, gLink, gNode, radiusScale, treeLayout, diagonal, radius };
