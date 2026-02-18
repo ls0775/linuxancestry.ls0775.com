@@ -48,8 +48,6 @@ const FamilyTree: React.FC = () => {
 
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const topAxisRef = useRef<SVGSVGElement>(null);
-    const bottomAxisRef = useRef<SVGSVGElement>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
