@@ -4,11 +4,9 @@ import './App.css'
 
 const FamilyTree = lazy(() => import('./components/FamilyTree'));
 const RadialTree = lazy(() => import('./components/RadialTree'));
-const SunburstView = lazy(() => import('./components/SunburstView'));
-const IcicleView = lazy(() => import('./components/IcicleView'));
 
 function App() {
-  const [viewMode, setViewMode] = useState<'tree' | 'radial' | 'sunburst' | 'icicle'>('radial');
+  const [viewMode, setViewMode] = useState<'tree' | 'radial'>('radial');
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 selection:bg-cyan-500/30">
@@ -38,18 +36,6 @@ function App() {
             >
               RADIAL
             </button>
-            <button
-              onClick={() => setViewMode('sunburst')}
-              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'sunburst' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-            >
-              SUNBURST
-            </button>
-            <button
-              onClick={() => setViewMode('icicle')}
-              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'icicle' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-            >
-              DENSITY
-            </button>
           </div>
           <div className="text-sm font-medium text-slate-400 hidden lg:block">
             Interactive Exploration Layer
@@ -66,8 +52,6 @@ function App() {
           }>
             {viewMode === 'tree' && <FamilyTree />}
             {viewMode === 'radial' && <RadialTree />}
-            {viewMode === 'sunburst' && <SunburstView />}
-            {viewMode === 'icicle' && <IcicleView />}
           </Suspense>
         </ErrorBoundary>
       </main>

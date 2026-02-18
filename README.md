@@ -10,11 +10,9 @@ This project is a modern reimagining of the classic Linux lineage visualizations
 - **[Wikipedia: Linux Distribution](https://en.wikipedia.org/wiki/Linux_distribution)**: For the historical context of the ecosystem's "Big Bang" moments.
 
 ## 🚀 Features
-- **4 Interactive Visualization Modes**: 
+- **Interactive Visualization Modes**: 
   - **Timeline View** - Technical Tidy Tree with orthogonal links and smart-scaling years.
   - **Radial View** - Concentric "DNA" map with an interactive temporal scrubber.
-  - **Sunburst View** - Generational overview showing family proportions.
-  - **Density View** - High-density Icicle plot for side-by-side family comparison.
 - **Automated ETL Pipeline**: Robust Python engine that scrapes, repairs, and sanitizes 1,100+ records from DistroWatch.
 - **Global Reset**: Unified state management to instantly clear complex filters and zoom states.
 - **Performance Optimized**: Code-splitting, vendor chunking, and lazy loading for a sub-second initial interactive state.

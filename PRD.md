@@ -17,12 +17,10 @@ The **Interactive Linux Distro Map** is a high-performance, web-based visualizat
 - **Cycle-Resilient Architecture**: Pre-processed data pipeline that detects and breaks circular references (e.g., projects that point back to themselves).
 
 ### 3.2. Visualization Modes
-The application provides **4 distinct visualization modes**:
+The application provides **2 distinct high-performance visualization modes**:
 
-1. **Timeline View (Tidy Tree)**: Horizontal tree layout with smart-scaling year gridlines. Uses orthogonal links for a professional, technical aesthetic.
-2. **Radial View (DNA Map)**: Concentric circles representing years (1991 outwards), featuring a temporal scrubber to "playback" Linux history.
-3. **Sunburst View (Ecosystem Overview)**: A hierarchical partition showing the relative volume of different families.
-4. **Density View (Icicle Plot)**: A high-density rectangular map optimized for comparing the scale and lifespan of families side-by-side. (Replaces legacy list views).
+1. **Timeline View (Tidy Tree)**: Horizontal tree layout with smart-scaling year gridlines. Uses orthogonal links for a professional, technical aesthetic. Optimized for tracing lineage over 30 years.
+2. **Radial View (DNA Map)**: Concentric circles representing years (1991 outwards), featuring a temporal scrubber to "playback" Linux history in a compact, DNA-like spiral.
 
 ### 3.3. User Interaction
 - **Global Reset System**: Dedicated "RESET" functionality in every view to instantly clear all filters, search terms, and zoom states.
