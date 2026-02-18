@@ -25,12 +25,6 @@ const IndentedList: React.FC = () => {
         setExpandedNodes(new Set(['__virtual_root__']));
     };
 
-    const getDistroWatchUrl = (name: string, url?: string) => {
-        if (url && url.includes('distrowatch.com')) return url;
-        const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return `https://distrowatch.com/table.php?distribution=${slug}`;
-    };
-
     const getLogoUrl = (node: DistroNode) => {
         if (node.logo) return node.logo;
         if (node.icon) return node.icon;

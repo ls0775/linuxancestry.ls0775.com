@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Search, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -52,7 +52,6 @@ const IcicleView: React.FC = () => {
             return true;
         });
 
-        const visibleIds = new Set(filteredData.map(d => d.id));
         const virtualRoot: any = { id: '__virtual_root__', name: 'Linux Ecosystem', isVirtual: true, parent: null };
         const stratifyData = filteredData.length === 0 ? [virtualRoot] : [virtualRoot, ...filteredData];
 

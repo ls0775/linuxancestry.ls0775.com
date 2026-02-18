@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Search, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -306,7 +306,7 @@ const FamilyTree: React.FC = () => {
         }
 
         // Tree layout setup
-        const treeLayout = d3.tree()
+        const treeLayout = d3.tree<DistroNode>()
             .size([chartHeight, chartWidth]);
 
         treeLayout(root);
@@ -327,7 +327,7 @@ const FamilyTree: React.FC = () => {
             const computedY = node.x;
 
             node.x = xScale(startYear) + margin.left;
-            node.y = computedY + margin.top;
+            node.y = (computedY ?? 0) + margin.top;
         });
 
         // Draw links
@@ -393,8 +393,8 @@ const FamilyTree: React.FC = () => {
             });
 
         // Zoom to focused node
-        const focusedNode = focusedNodeId ? root.descendants().find((d: any) => d.data.id === focusedNodeId) : null;
-        if (focusedNode) {
+        const focusedNode: any = focusedNodeId ? root.descendants().find((d: any) => d.data.id === focusedNodeId) : null;
+        if (focusedNode && focusedNode.x !== undefined && focusedNode.y !== undefined) {
             const scale = 1.5;
             const x = -focusedNode.x * scale + width / 2;
             const y = -focusedNode.y * scale + height / 2;
