@@ -168,9 +168,11 @@ def transform_distros(raw_data: List[Dict]) -> List[Dict]:
         if distro['id'] == 'ubuntu':
             parent = 'debian'
         else:
+            # Check if name contains Ubuntu (e.g. Kubuntu, Xubuntu, Ubuntu Studio)
+            # OR if based_on/description specifically mentions Ubuntu
             based_on = distro.get('based_on', '')
             desc = distro.get('description', '')
-            if 'Ubuntu' in based_on or 'Ubuntu-based' in desc or 'based on Ubuntu' in desc:
+            if 'Ubuntu' in distro['name'] or 'Ubuntu' in based_on or 'Ubuntu-based' in desc or 'based on Ubuntu' in desc:
                 if parent != 'ubuntu' and 'ubuntu' in distro_ids:
                     parent = 'ubuntu'
 
