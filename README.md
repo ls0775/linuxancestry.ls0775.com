@@ -9,7 +9,7 @@ A modern, interactive visualization of the Linux distribution family tree.
   - **Timeline View** - Horizontal tree with year gridlines (1991-present)
   - **Radial View** - Concentric circles with interactive timeline scrubber
   - **Sunburst View** - Hierarchical rings showing family proportions
-  - **List View** - Collapsible tree with sortable metadata columns
+  - **List View** - Collapsible tree with metadata columns
 - **Modern Scraper**: Custom Python engine fetching 1,100+ distros with logic for repairing missing data.
 - **Rich Data**: Scrapes descriptions, logos, popularity rankings, and deep lineage from DistroWatch.
 - **Smart Filtering**: Active/Discontinued toggle, search, and path highlighting.
