@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useReducer } from 'react';
 import * as d3 from 'd3';
 import { Search, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -74,13 +74,15 @@ const FamilyTree: React.FC = () => {
     useEffect(() => {
         if (!svgRef.current || !containerRef.current || !fixedData.length) return;
 
-        const width = containerRef.current.clientWidth;
-        const height = containerRef.current.clientHeight;
+        const container = containerRef.current;
+        const width = container.clientWidth;
+        const height = container.clientHeight;
         if (width === 0 || height === 0) return;
 
         const margin = { top: 100, right: 100, bottom: 100, left: 100 };
-        const chartWidth = Math.max(width - margin.left - margin.right, 1200);
-        const chartHeight = Math.max(height - margin.top - margin.bottom, 800);
+        // Increase base sizes to prevent compression
+        const chartWidth = 2400; 
+        const chartHeight = 1200;
 
         // 1. Setup Groups if missing
         if (!groupsRef.current) {
@@ -103,8 +105,8 @@ const FamilyTree: React.FC = () => {
             zoomRef.current = zoom;
             svg.call(zoom).on('click', () => { setSelectedNode(null); });
 
-            // Initial view
-            svg.call(zoom.transform as any, d3.zoomIdentity.translate(margin.left, margin.top).scale(0.6));
+            // Initial view - pull back to see more
+            svg.call(zoom.transform as any, d3.zoomIdentity.translate(50, height/4).scale(0.3));
 
             const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 1.5 : 2.5));
 
@@ -123,7 +125,7 @@ const FamilyTree: React.FC = () => {
             .attr('stroke', '#1e293b').attr('stroke-width', (d: any) => d % 10 === 0 ? 2 : 1).attr('stroke-opacity', (d: any) => d % 10 === 0 ? 0.5 : 0.3)
             .merge(gridLines as any)
             .attr('x1', (d: any) => xScale(d)).attr('x2', (d: any) => xScale(d))
-            .attr('y1', 0).attr('y2', chartHeight);
+            .attr('y1', -100).attr('y2', chartHeight + 100);
 
         const gridLabels = gGrid.selectAll('text').data(yearsToDraw.flatMap(y => [{y, pos:'top'}, {y, pos:'bottom'}]));
         gridLabels.enter().append('text')
@@ -167,14 +169,16 @@ const FamilyTree: React.FC = () => {
         
         treeLayout(root);
         root.descendants().forEach((node: any) => {
-            const verticalLayoutPos = node.x; 
+            // node.x from d3.tree is the BREADTH (vertical here)
+            // node.y from d3.tree is the DEPTH (horizontal here)
+            // WE OVERRIDE x with time
+            const verticalPos = node.x; 
             node.x = xScale(getYear(node.data.start)); 
-            node.y = verticalLayoutPos; 
+            node.y = verticalPos; 
         });
 
         // Update Links
-        const links = root.links();
-        const linkSelection = gLink.selectAll('path.link-path').data(links, (d: any) => d.target.data.id);
+        const linkSelection = gLink.selectAll('path.link-path').data(root.links(), (d: any) => d.target.data.id);
         linkSelection.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
         linkSelection.enter().append('path').attr('class', 'link-path')
             .attr('fill', 'none').attr('stroke', '#475569').attr('stroke-width', 2).attr('stroke-opacity', 0)
