@@ -56,7 +56,7 @@ const RadialTree: React.FC = () => {
         return date.getFullYear() + (dayOfYear / 366);
     }, [parseDate]);
 
-    // 1. One-time Setup
+    // Unified Initialization and Update Effect
     useEffect(() => {
         if (!svgRef.current || !containerRef.current || !distroData.length) return;
 
@@ -64,40 +64,39 @@ const RadialTree: React.FC = () => {
         const height = containerRef.current.clientHeight;
         const radius = Math.max(width, height, 2400) / 2;
 
-        const svg = d3.select(svgRef.current)
-            .attr("width", width)
-            .attr("height", height)
-            .style("user-select", "none");
+        // 1. Setup Groups if missing
+        if (!groupsRef.current) {
+            const svg = d3.select(svgRef.current)
+                .attr("width", width)
+                .attr("height", height)
+                .style("user-select", "none");
 
-        svg.selectAll("*").remove();
-        const gZoom = svg.append("g");
+            svg.selectAll("*").remove();
+            const gZoom = svg.append("g");
 
-        const radiusScale = d3.scaleLinear()
-            .domain([1991, currentYear + 2])
-            .range([0, radius - 100]);
+            const radiusScale = d3.scaleLinear()
+                .domain([1991, currentYear + 2])
+                .range([0, radius - 100]);
 
-        const gYearLines = gZoom.append("g").attr("class", "year-lines");
-        const gLink = gZoom.append("g").attr("fill", "none");
-        const gNode = gZoom.append("g").attr("cursor", "pointer").attr("pointer-events", "all");
+            const gYearLines = gZoom.append("g").attr("class", "year-lines");
+            const gLink = gZoom.append("g").attr("fill", "none");
+            const gNode = gZoom.append("g").attr("cursor", "pointer").attr("pointer-events", "all");
 
-        const zoom = d3.zoom().scaleExtent([0.05, 4]).on("zoom", (event) => gZoom.attr("transform", event.transform));
-        zoomRef.current = zoom;
-        svg.call(zoom as any);
+            const zoom = d3.zoom().scaleExtent([0.05, 4]).on("zoom", (event) => gZoom.attr("transform", event.transform));
+            zoomRef.current = zoom;
+            svg.call(zoom as any);
 
-        const initialScale = Math.min(width, height) / (radius * 2.2);
-        svg.call(zoom.transform as any, d3.zoomIdentity.translate(width / 2, height / 2).scale(initialScale));
+            const initialScale = Math.min(width, height) / (radius * 2.2);
+            svg.call(zoom.transform as any, d3.zoomIdentity.translate(width / 2, height / 2).scale(initialScale));
 
-        const treeLayout = d3.tree<DistroNode>().separation((a, b) => (a.parent == b.parent ? 1 : 2) / a.depth);
-        const diagonal = d3.linkRadial<any, any>().angle((d: any) => d.x).radius((d: any) => d.y);
+            const treeLayout = d3.tree<DistroNode>().separation((a, b) => (a.parent == b.parent ? 1 : 2) / a.depth);
+            const diagonal = d3.linkRadial<any, any>().angle((d: any) => d.x).radius((d: any) => d.y);
 
-        groupsRef.current = { gZoom, gYearLines, gLink, gNode, radiusScale, treeLayout, diagonal, radius };
-    }, [distroData.length, currentYear]);
+            groupsRef.current = { gZoom, gYearLines, gLink, gNode, radiusScale, treeLayout, diagonal, radius };
+        }
 
-    // 2. Smooth Update Loop
-    useEffect(() => {
-        if (!groupsRef.current || !distroData.length) return;
-        const { gNode, gLink, gYearLines, radiusScale, treeLayout, diagonal, radius } = groupsRef.current;
-        
+        // 2. Perform Update
+        const { gNode, gLink, gYearLines, radiusScale, treeLayout, diagonal, radius: currentRadius } = groupsRef.current;
         const duration = 400; 
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
         const search = searchTerm.trim().toLowerCase();
@@ -114,14 +113,7 @@ const RadialTree: React.FC = () => {
         });
 
         const nodeIds = new Set(baseDistros.map((d) => d.id));
-        const linuxRootNode: DistroNode = {
-            id: "Linux_Original",
-            name: "Linux",
-            parent: null,
-            isVirtual: false,
-            start: "1991-09-17",
-            url: "https://www.kernel.org/"
-        };
+        const linuxRootNode: DistroNode = { id: "Linux_Original", name: "Linux", parent: null, isVirtual: false, start: "1991-09-17" };
 
         let dataForStratify = [
             linuxRootNode,
@@ -132,18 +124,12 @@ const RadialTree: React.FC = () => {
         ].sort((a, b) => parseDate(a.start).getTime() - parseDate(b.start).getTime());
 
         const currentVisibleIds = new Set(dataForStratify.map(d => d.id));
-        const stratify = d3.stratify<DistroNode>()
-            .id((d) => d.id)
-            .parentId((d) => {
-                if (d.id === 'Linux_Original') return null;
-                const pid = d.parent || d.parentId;
-                return (pid && currentVisibleIds.has(pid)) ? pid : 'Linux_Original';
-            });
+        const stratify = d3.stratify<DistroNode>().id(d => d.id).parentId(d => (d.id === 'Linux_Original') ? null : (d.parent && currentVisibleIds.has(d.parent) ? d.parent : 'Linux_Original'));
 
         let root: d3.HierarchyNode<DistroNode>;
         try { root = stratify(dataForStratify); } catch (e) { return; }
 
-        treeLayout.size([2 * Math.PI, radius]);
+        treeLayout.size([2 * Math.PI, currentRadius]);
         treeLayout(root);
 
         root.descendants().forEach(d => {
@@ -151,7 +137,7 @@ const RadialTree: React.FC = () => {
             d.y = radiusScale(Math.max(1991, Math.min(2026, startYear)));
         });
 
-        // Year Rings
+        // Rings
         const yearsToDraw = d3.range(1991, currentYear + 1, 5);
         const yearCircles = gYearLines.selectAll('circle.year-circle').data(yearsToDraw);
         yearCircles.enter().append("circle").attr("class", "year-circle")
@@ -212,7 +198,7 @@ const RadialTree: React.FC = () => {
             .attr("fill", (d: any) => (search && d.data.name.toLowerCase().includes(search)) || (focusId === d.id) ? "#facc15" : "#cbd5e1")
             .text((d: any) => d.data.name);
 
-    }, [distroData, searchTerm, selectedNode, showAll, getYear, parseDate, timelineYear, currentYear]);
+    }, [distroData, timelineYear, searchTerm, showAll, selectedNode, currentYear, getYear]);
 
     const handleResetZoom = () => {
         if (!svgRef.current || !containerRef.current || !zoomRef.current) return;

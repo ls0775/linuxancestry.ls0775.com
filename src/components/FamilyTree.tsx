@@ -70,7 +70,7 @@ const FamilyTree: React.FC = () => {
         return date.getFullYear() + (dayOfYear / 366);
     }, [parseDate]);
 
-    // 1. One-time Setup
+    // Unified Initialization and Update Effect
     useEffect(() => {
         if (!svgRef.current || !containerRef.current || !fixedData.length) return;
 
@@ -81,41 +81,41 @@ const FamilyTree: React.FC = () => {
         const chartWidth = width - margin.left - margin.right;
         const chartHeight = height - margin.top - margin.bottom;
 
-        const svg = d3.select(svgRef.current).attr('width', width).attr('height', height);
-        svg.selectAll('*').remove();
-        const gZoom = svg.append('g');
+        // 1. Setup Groups if missing
+        if (!groupsRef.current) {
+            const svg = d3.select(svgRef.current).attr('width', width).attr('height', height);
+            svg.selectAll('*').remove();
+            const gZoom = svg.append('g');
 
-        const xScale = d3.scaleLinear().domain([1991, currentYear]).range([0, chartWidth]);
-        const gGrid = gZoom.append('g').attr('class', 'year-grid');
-        const gLink = gZoom.append('g').attr('class', 'links');
-        const gNode = gZoom.append('g').attr('class', 'nodes');
+            const xScale = d3.scaleLinear().domain([1991, currentYear]).range([0, chartWidth]);
+            const gGrid = gZoom.append('g').attr('class', 'year-grid');
+            const gLink = gZoom.append('g').attr('class', 'links');
+            const gNode = gZoom.append('g').attr('class', 'nodes');
 
-        const zoom = d3.zoom<SVGSVGElement, unknown>()
-            .scaleExtent([0.1, 4])
-            .on('zoom', (event) => {
-                gZoom.attr('transform', event.transform);
-                gZoom.selectAll('.year-label-major').style('font-size', (12 / event.transform.k) + 'px');
-                gZoom.selectAll('.year-label-minor').style('font-size', (10 / event.transform.k) + 'px');
-            });
-        zoomRef.current = zoom;
-        svg.call(zoom).on('click', () => { setSelectedNode(null); });
+            const zoom = d3.zoom<SVGSVGElement, unknown>()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    gZoom.attr('transform', event.transform);
+                    gZoom.selectAll('.year-label-major').style('font-size', (12 / event.transform.k) + 'px');
+                    gZoom.selectAll('.year-label-minor').style('font-size', (10 / event.transform.k) + 'px');
+                });
+            zoomRef.current = zoom;
+            svg.call(zoom).on('click', () => { setSelectedNode(null); });
 
-        const initialScale = 0.8;
-        svg.call(zoom.transform as any, d3.zoomIdentity.translate((width - chartWidth * initialScale) / 2, 0).scale(initialScale));
+            const initialScale = 0.8;
+            svg.call(zoom.transform as any, d3.zoomIdentity.translate((width - chartWidth * initialScale) / 2, 0).scale(initialScale));
 
-        const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 1.5 : 2.5));
+            const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 1.5 : 2.5));
 
-        groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, margin };
-    }, [fixedData.length, currentYear]);
+            groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, margin };
+        }
 
-    // 2. Smooth Update Loop
-    useEffect(() => {
-        if (!groupsRef.current || !fixedData.length || !containerRef.current) return;
-        const { gGrid, gLink, gNode, xScale, treeLayout, margin } = groupsRef.current;
-        const height = containerRef.current.clientHeight;
+        // 2. Perform Update
+        const { gGrid, gLink, gNode, xScale, treeLayout } = groupsRef.current;
         const duration = 400;
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
 
+        // Grid Update
         const yearsToDraw = d3.range(1991, currentYear + 1, 5);
         const gridLines = gGrid.selectAll('line').data(yearsToDraw);
         gridLines.enter().append('line')
@@ -134,7 +134,7 @@ const FamilyTree: React.FC = () => {
             .attr('y', (d: any) => d.pos === 'top' ? margin.top - 10 : height - margin.bottom + 25)
             .text((d: any) => d.y);
 
-        // Data Filtering
+        // Data Prep
         let filteredData = fixedData.filter(d => {
             const startYear = getYear(d.start);
             if (startYear > timelineYear + 0.999) return false;
@@ -143,7 +143,6 @@ const FamilyTree: React.FC = () => {
             return true;
         });
 
-        // Lineage Focus
         const relatedIds = new Set<string>();
         if (selectedNode) {
             const idMap = new Map(fixedData.map(d => [d.id, d]));
@@ -167,12 +166,12 @@ const FamilyTree: React.FC = () => {
         
         treeLayout(root);
         root.descendants().forEach((node: any) => {
-            const verticalPos = node.x; 
+            const layoutVerticalPos = node.x; 
             node.x = xScale(getYear(node.data.start)) + margin.left; 
-            node.y = verticalPos + margin.top; 
+            node.y = layoutVerticalPos + margin.top; 
         });
 
-        // Link Join
+        // Update Links
         const link = gLink.selectAll('path.link').data(root.links(), (d: any) => d.target.data.id);
         link.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
         link.enter().append('path').attr('class', 'link')
@@ -184,7 +183,7 @@ const FamilyTree: React.FC = () => {
                 return `M ${d.source.x},${d.source.y} H ${midX} V ${d.target.y} H ${d.target.x}`;
             });
 
-        // Node Join
+        // Update Nodes
         const nodeSelection = gNode.selectAll('g.node').data(root.descendants(), (d: any) => d.data.id);
         nodeSelection.exit().transition().duration(duration).attr('opacity', 0).remove();
         const nodeEnter = nodeSelection.enter().append('g').attr('class', 'node').attr('cursor', 'pointer').attr('opacity', 0)
@@ -210,7 +209,7 @@ const FamilyTree: React.FC = () => {
             .attr('font-weight', (d: any) => d.data.isVirtual ? 'bold' : 'normal')
             .text((d: any) => d.data.name);
 
-    }, [searchTerm, showAll, timelineYear, collapsedIds, selectedNode, fixedData, currentYear, getYear]);
+    }, [fixedData, timelineYear, searchTerm, showAll, collapsedIds, selectedNode, currentYear, getYear]);
 
     if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
@@ -235,7 +234,7 @@ const FamilyTree: React.FC = () => {
                 {selectedNode && (
                     <motion.div initial={{ x: 400, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 400, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="absolute top-4 right-4 w-96 bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 rounded-3xl shadow-2xl overflow-hidden z-20">
                         <div className="p-8">
-                            <button onClick={() => setSelectedNode(null)} className="absolute top-6 right-6 text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+                            <button onClick={() => setSelectedNode(null)} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
                             <div className="flex items-start gap-6 mb-8">
                                 <div><h2 className="text-2xl font-black text-white leading-tight">{selectedNode.name}</h2><p className="text-xs text-slate-400 font-medium uppercase">{selectedNode.parent ? `Ancestor: ${selectedNode.parent}` : 'Origin Project'}</p></div>
                                 <div className="bg-white p-4 rounded-3xl shadow-2xl w-24 h-24 flex items-center justify-center overflow-hidden">
