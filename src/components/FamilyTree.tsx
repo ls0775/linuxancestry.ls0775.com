@@ -307,7 +307,8 @@ const FamilyTree: React.FC = () => {
 
         // Tree layout setup
         const treeLayout = d3.tree<DistroNode>()
-            .size([chartHeight, chartWidth]);
+            .size([chartHeight, chartWidth])
+            .separation((a, b) => (a.parent === b.parent ? 1.5 : 2.5));
 
         treeLayout(root);
 
@@ -424,7 +425,7 @@ const FamilyTree: React.FC = () => {
 
         // Node labels
         nodes.append('text')
-            .attr('dy', -12)
+            .attr('dy', (d, i) => i % 2 === 0 ? -12 : 20)
             .attr('text-anchor', 'middle')
             .attr('fill', '#e2e8f0')
             .attr('font-size', '11px')
