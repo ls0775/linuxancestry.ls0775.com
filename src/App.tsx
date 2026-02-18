@@ -4,10 +4,10 @@ import './App.css'
 const FamilyTree = lazy(() => import('./components/FamilyTree'));
 const RadialTree = lazy(() => import('./components/RadialTree'));
 const SunburstView = lazy(() => import('./components/SunburstView'));
-const IndentedList = lazy(() => import('./components/IndentedList'));
+const IcicleView = lazy(() => import('./components/IcicleView'));
 
 function App() {
-  const [viewMode, setViewMode] = useState<'tree' | 'radial' | 'sunburst' | 'list'>('radial');
+  const [viewMode, setViewMode] = useState<'tree' | 'radial' | 'sunburst' | 'icicle'>('radial');
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 selection:bg-cyan-500/30">
@@ -44,10 +44,10 @@ function App() {
               SUNBURST
             </button>
             <button
-              onClick={() => setViewMode('list')}
-              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+              onClick={() => setViewMode('icicle')}
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'icicle' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
             >
-              LIST
+              DENSITY
             </button>
           </div>
           <div className="text-sm font-medium text-slate-400 hidden lg:block">
@@ -65,7 +65,7 @@ function App() {
           {viewMode === 'tree' && <FamilyTree />}
           {viewMode === 'radial' && <RadialTree />}
           {viewMode === 'sunburst' && <SunburstView />}
-          {viewMode === 'list' && <IndentedList />}
+          {viewMode === 'icicle' && <IcicleView />}
         </Suspense>
       </main>
 

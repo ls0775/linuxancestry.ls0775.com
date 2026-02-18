@@ -416,17 +416,13 @@ const FamilyTree: React.FC = () => {
                 const targetX = d.target.x;
                 const targetY = d.target.y;
 
-                // Smooth cubic Bezier curve for horizontal flow (Left-to-Right)
-                // Control points create a horizontal ease-out from parent and horizontal ease-in to child
-
-                // If nodes are far apart vertically, add some vertical easing too
-                const xDist = Math.abs(targetX - sourceX);
-                const curvature = Math.min(xDist * 0.5, 100); // Cap curvature radius
-
+                // Orthogonal bracket paths
+                // Move horizontally halfway, then vertically, then horizontally to target
+                const midX = sourceX + (targetX - sourceX) * 0.4;
                 return `M ${sourceX},${sourceY}
-                        C ${sourceX + curvature},${sourceY}
-                          ${targetX - curvature},${targetY}
-                          ${targetX},${targetY}`;
+                        H ${midX}
+                        V ${targetY}
+                        H ${targetX}`;
             })
             .attr('fill', 'none')
             .attr('stroke', '#475569')
