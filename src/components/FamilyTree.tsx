@@ -44,26 +44,31 @@ const FamilyTree: React.FC = () => {
         return date.getFullYear() + (dayOfYear / 366);
     }, [parseDate]);
 
-    // Calculate ecosystem statistics (Now filter-aware)
+    // Derived active node for lineage (either explicitly clicked or searched)
+    const activeHighlightNode = useMemo(() => {
+        if (selectedNode) return selectedNode;
+        if (!searchTerm.trim()) return null;
+        const search = searchTerm.trim().toLowerCase();
+        return distroData.find(d => d.name.toLowerCase() === search || d.id.toLowerCase() === search) || null;
+    }, [selectedNode, searchTerm, distroData]);
+
+    // Calculate ecosystem statistics
     const stats = useMemo(() => {
-        // Base distros matching the year filter
         const yearMatched = distroData.filter((d) => {
             const startYear = getYear(d.start);
             return startYear <= timelineYear + 0.999;
         });
 
-        // Distros matching both year and status filter
         const filterMatched = yearMatched.filter(d => {
             if (showAll) return true;
-            if (!d.stop) return true; // Active
+            if (!d.stop) return true;
             const stopYear = getYear(d.stop);
-            return stopYear >= timelineYear; // Was active at the time
+            return stopYear >= timelineYear;
         });
 
         let selectedChildrenCount = 0;
-        if (selectedNode) {
+        if (activeHighlightNode) {
             const countDescendants = (pid: string): number => {
-                // Only count descendants that match current filters
                 const direct = filterMatched.filter(d => d.parent === pid);
                 let total = direct.length;
                 direct.forEach(child => {
@@ -71,16 +76,16 @@ const FamilyTree: React.FC = () => {
                 });
                 return total;
             };
-            selectedChildrenCount = countDescendants(selectedNode.id);
+            selectedChildrenCount = countDescendants(activeHighlightNode.id);
         }
 
         return {
             total: yearMatched.length,
             active: yearMatched.filter(d => !d.stop).length,
             selectedChildren: selectedChildrenCount,
-            selectedName: selectedNode?.name
+            selectedName: activeHighlightNode?.name
         };
-    }, [distroData, timelineYear, selectedNode, getYear, showAll]);
+    }, [distroData, timelineYear, activeHighlightNode, getYear, showAll]);
 
     // D3 Persistence
     const zoomRef = useRef<any>(null);
@@ -117,8 +122,8 @@ const FamilyTree: React.FC = () => {
         if (width === 0 || height === 0) return;
 
         const margin = { top: 100, right: 100, bottom: 100, left: 100 };
-        const chartWidth = 5000; 
-        const chartHeight = 12000;
+        const chartWidth = 32000; 
+        const chartHeight = 40000; 
 
         if (!groupsRef.current) {
             const svg = d3.select(svgRef.current).attr('width', width).attr('height', height);
@@ -131,18 +136,19 @@ const FamilyTree: React.FC = () => {
             const gNode = gZoom.append('g').attr('class', 'nodes');
 
             const zoom = d3.zoom<SVGSVGElement, unknown>()
-                .scaleExtent([0.01, 4])
+                .scaleExtent([0.001, 4])
                 .on('zoom', (event) => {
                     gZoom.attr('transform', event.transform);
-                    gZoom.selectAll('.year-label-major').style('font-size', (12 / event.transform.k) + 'px');
-                    gZoom.selectAll('.year-label-minor').style('font-size', (10 / event.transform.k) + 'px');
+                    gZoom.selectAll('.year-label-major').style('font-size', (24 / event.transform.k) + 'px');
+                    gZoom.selectAll('.year-label-minor').style('font-size', (14 / event.transform.k) + 'px');
                 });
             zoomRef.current = zoom;
             svg.call(zoom).on('click', () => { setSelectedNode(null); });
 
-            svg.call(zoom.transform as any, d3.zoomIdentity.translate(50, height/2).scale(0.1));
+            // Closer initial view for readability
+            svg.call(zoom.transform as any, d3.zoomIdentity.translate(margin.left, height/4).scale(0.12));
 
-            const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 6 : 12));
+            const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 15 : 30));
 
             groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, margin };
         }
@@ -153,36 +159,66 @@ const FamilyTree: React.FC = () => {
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
         const search = searchTerm.trim().toLowerCase();
 
-        // Grid Update
-        const yearsToDraw = d3.range(1991, 2027, 5);
+        // Grid Update - STAGGERED
+        const yearsToDraw = d3.range(1991, 2027, 1);
         const gridLines = gGrid.selectAll('line').data(yearsToDraw);
         gridLines.enter().append('line')
-            .attr('stroke', '#1e293b').attr('stroke-width', (d: any) => d % 10 === 0 ? 2 : 1).attr('stroke-opacity', (d: any) => d % 10 === 0 ? 0.5 : 0.3)
+            .attr('stroke', '#1e293b')
+            .attr('stroke-width', (d: any) => d % 5 === 0 ? 8 : 2)
+            .attr('stroke-opacity', (d: any) => d % 5 === 0 ? 0.5 : 0.2)
             .merge(gridLines as any)
             .attr('x1', (d: any) => xScale(d)).attr('x2', (d: any) => xScale(d))
-            .attr('y1', -100).attr('y2', chartHeight + 100);
+            .attr('y1', -200).attr('y2', chartHeight + 200);
 
         const gridLabels = gGrid.selectAll('text').data(yearsToDraw.flatMap(y => [{y, pos:'top'}, {y, pos:'bottom'}]));
         gridLabels.enter().append('text')
-            .attr('class', (d: any) => d.y % 10 === 0 ? 'year-label-major' : 'year-label-minor')
+            .attr('class', (d: any) => d.y % 5 === 0 ? 'year-label-major' : 'year-label-minor')
             .attr('text-anchor', 'middle').attr('fill', '#64748b')
-            .style('font-size', (d: any) => d.y % 10 === 0 ? '12px' : '10px').style('font-weight', (d: any) => d.y % 10 === 0 ? 'bold' : 'normal')
+            .style('font-weight', (d: any) => d.y % 5 === 0 ? '900' : '500')
             .merge(gridLabels as any)
             .attr('x', (d: any) => xScale(d.y))
-            .attr('y', (d: any) => d.pos === 'top' ? -20 : chartHeight + 30)
+            .attr('y', (d: any) => {
+                const base = d.pos === 'top' ? -40 : chartHeight + 100;
+                // Stagger minor years closer to axis, major years further away
+                const offset = d.y % 5 === 0 ? (d.pos === 'top' ? -60 : 60) : 0;
+                return base + offset;
+            })
+            .style('font-size', (d: any) => d.y % 5 === 0 ? '24px' : '14px')
             .text((d: any) => d.y);
 
+        // Data Filtering
         let filteredData = distroData.filter((d) => {
             const startYear = getYear(d.start);
             if (startYear > timelineYear + 0.999) return false;
             if (!showAll && d.stop && getYear(d.stop) < timelineYear) return false;
-            if (search && !d.name.toLowerCase().includes(search)) return false;
             return true;
         });
 
-        const nodeIds = new Set(filteredData.map(d => d.id));
-        const linuxRootNode: DistroNode = { id: "Linux_Original", name: "Linux", parent: null, isVirtual: false, start: "1991-09-17" };
+        // Lineage Calculation
+        const relatedIds = new Set<string>();
+        if (activeHighlightNode) {
+            const idMap = new Map(distroData.map(d => [d.id, d]));
+            let curr: DistroNode | undefined = activeHighlightNode;
+            while (curr) { 
+                relatedIds.add(curr.id); 
+                curr = curr.parent ? idMap.get(curr.parent) : undefined; 
+            }
+            const addDescendants = (pid: string) => {
+                distroData.filter(d => d.parent === pid).forEach(child => {
+                    if (relatedIds.has(child.id)) return;
+                    relatedIds.add(child.id);
+                    addDescendants(child.id);
+                });
+            };
+            addDescendants(activeHighlightNode.id);
+        }
 
+        if (search && activeHighlightNode) {
+            filteredData = filteredData.filter(d => relatedIds.has(d.id));
+        }
+
+        const linuxRootNode: DistroNode = { id: "Linux_Original", name: "Linux", parent: null, isVirtual: false, start: "1991-09-17" };
+        const nodeIds = new Set(filteredData.map(d => d.id));
         let dataForStratify = [
             linuxRootNode,
             ...filteredData.map((d) => ({
@@ -192,30 +228,11 @@ const FamilyTree: React.FC = () => {
         ].sort((a, b) => parseDate(a.start).getTime() - parseDate(b.start).getTime());
 
         const currentVisibleIds = new Set(dataForStratify.map(d => d.id));
-        const stratify = d3.stratify<DistroNode>().id(d => d.id).parentId(d => (d.id === 'Linux_Original') ? null : (d.parent && currentVisibleIds.has(d.parent) ? d.parent : 'Linux_Original'));
-        
-        let root: d3.HierarchyNode<DistroNode>;
-        try { root = stratify(dataForStratify); } catch (e) { return; }
-        root.descendants().forEach((d: any) => { if (collapsedIds.has(d.data.id) && d.children) { d._children = d.children; d.children = null; } });
-        
-        const relatedIds = new Set<string>();
-        if (selectedNode) {
-            const idMap = new Map(dataForStratify.map(d => [d.id, d]));
-            let curr: DistroNode | undefined = selectedNode;
-            while (curr) { 
-                relatedIds.add(curr.id); 
-                curr = curr.parent ? idMap.get(curr.parent) : (curr.id !== 'Linux_Original' ? idMap.get('Linux_Original') : undefined); 
-            }
-            const addDescendants = (pid: string) => {
-                dataForStratify.filter(d => d.parent === pid || (pid === 'Linux_Original' && !d.parent)).forEach(child => {
-                    if (child.id === 'Linux_Original') return;
-                    relatedIds.add(child.id);
-                    addDescendants(child.id);
-                });
-            };
-            addDescendants(selectedNode.id);
-        }
+        const finalStratify = d3.stratify<DistroNode>().id(d => d.id).parentId(d => (d.id === 'Linux_Original') ? null : (d.parent && currentVisibleIds.has(d.parent) ? d.parent : 'Linux_Original'));
 
+        let root: d3.HierarchyNode<DistroNode>;
+        try { root = finalStratify(dataForStratify); } catch (e) { return; }
+        
         treeLayout(root);
         root.descendants().forEach((node: any) => {
             const verticalLayoutPos = node.x; 
@@ -227,11 +244,11 @@ const FamilyTree: React.FC = () => {
         const linkSelection = gLink.selectAll('path.link-path').data(root.links(), (d: any) => d.target.data.id);
         linkSelection.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
         linkSelection.enter().append('path').attr('class', 'link-path')
-            .attr('fill', 'none').attr('stroke-width', 2).attr('stroke-opacity', 0)
+            .attr('fill', 'none').attr('stroke-width', 4).attr('stroke-opacity', 0)
             .merge(linkSelection as any).transition().duration(duration)
-            .attr('stroke', (d: any) => selectedNode && relatedIds.has(d.target.data.id) ? '#facc15' : '#475569')
-            .attr('stroke-opacity', (d: any) => !selectedNode ? 0.6 : (relatedIds.has(d.target.data.id) ? 1 : 0.1))
-            .attr('stroke-width', (d: any) => selectedNode && relatedIds.has(d.target.data.id) ? 3 : 2)
+            .attr('stroke', (d: any) => activeHighlightNode && relatedIds.has(d.target.data.id) ? '#facc15' : '#475569')
+            .attr('stroke-opacity', (d: any) => !activeHighlightNode ? 0.6 : (relatedIds.has(d.target.data.id) ? 1 : 0.1))
+            .attr('stroke-width', (d: any) => activeHighlightNode && relatedIds.has(d.target.data.id) ? 16 : 8)
             .attr('d', diagonal as any);
 
         const nodeSelection = gNode.selectAll('g.node-group').data(root.descendants(), (d: any) => d.data.id);
@@ -243,32 +260,33 @@ const FamilyTree: React.FC = () => {
                 setSelectedNode(d.data);
             });
 
-        nodeEnter.append('circle').attr('r', (d: any) => d.data.id === 'Linux_Original' ? 8 : 6).attr('stroke-width', 2);
-        nodeEnter.append('text').attr('text-anchor', 'middle').attr('fill', '#e2e8f0').attr('font-size', '11px').style('pointer-events', 'none');
+        nodeEnter.append('circle').attr('r', 24).attr('stroke-width', 8);
+        nodeEnter.append('text').attr('text-anchor', 'middle').attr('fill', '#e2e8f0').style('pointer-events', 'none');
 
         const nodeUpdate = nodeSelection.merge(nodeEnter as any).transition().duration(duration)
-            .attr('opacity', (d: any) => !selectedNode || relatedIds.has(d.data.id) ? 1 : 0.1)
+            .attr('opacity', (d: any) => !activeHighlightNode || relatedIds.has(d.data.id) ? 1 : 0.1)
             .attr('transform', (d: any) => `translate(${d.x},${d.y})`);
 
         nodeUpdate.select('circle')
             .attr('fill', (d: any) => {
-                if (selectedNode && relatedIds.has(d.data.id)) return '#facc15';
+                if (activeHighlightNode && relatedIds.has(d.data.id)) return '#facc15';
                 if (d.data.id === 'Linux_Original') return '#64748b';
                 if (d.data.stop) return '#ef4444';
                 let family = d;
                 while (family.parent && family.parent.data.id !== 'Linux_Original') { family = family.parent; }
                 return colorScale(family.data.id);
             })
-            .attr('stroke', (d: any) => selectedNode?.id === d.data.id ? '#fff' : 'none')
-            .attr('r', (d: any) => selectedNode && relatedIds.has(d.data.id) ? (d.data.id === 'Linux_Original' ? 10 : 8) : (d.data.id === 'Linux_Original' ? 8 : 6));
+            .attr('stroke', (d: any) => (selectedNode?.id === d.data.id || (search && activeHighlightNode?.id === d.data.id)) ? '#fff' : 'none')
+            .attr('r', (d: any) => activeHighlightNode && relatedIds.has(d.data.id) ? 32 : 24);
 
         nodeUpdate.select('text')
-            .attr('dy', 20)
-            .attr('font-weight', (d: any) => d.data.id === 'Linux_Original' || (selectedNode && relatedIds.has(d.data.id)) ? 'bold' : 'normal')
-            .attr('fill', (d: any) => selectedNode && relatedIds.has(d.data.id) ? '#facc15' : '#e2e8f0')
+            .attr('dy', 85)
+            .style('font-size', '64px') // DOUBLED font size
+            .attr('font-weight', '900')
+            .attr('fill', (d: any) => activeHighlightNode && relatedIds.has(d.data.id) ? '#facc15' : '#e2e8f0')
             .text((d: any) => d.data.name);
 
-    }, [distroData, timelineYear, searchTerm, showAll, collapsedIds, selectedNode, currentYear, getYear, parseDate]);
+    }, [distroData, timelineYear, searchTerm, showAll, collapsedIds, selectedNode, currentYear, getYear, parseDate, activeHighlightNode]);
 
     if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
