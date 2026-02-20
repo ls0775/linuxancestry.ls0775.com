@@ -6,6 +6,11 @@ import { AnimatePresence, motion } from 'framer-motion';
 import TimelineControls from './TimelineControls';
 import VideoExportModal from './VideoExportModal';
 import { useDistroData, type DistroNode } from '../hooks/useDistroData';
+import {
+    parseDate, getYear, getLogoUrl, getFallbackLogoUrl,
+    getPopularityRank, isPrimaryDistro,
+    HoverTooltip, PopularityBadge, AncestryBreadcrumb,
+} from '../utils/distroUtils';
 
 const CHART_WIDTH = 32000;
 const CHART_HEIGHT = 40000;
@@ -26,31 +31,6 @@ const FamilyTree: React.FC = () => {
 
     const currentYear = new Date().getFullYear();
     const [timelineYear, setTimelineYear] = useState(currentYear);
-
-    const getLogoUrl = (node: DistroNode) => `/logos/${node.id}.png`;
-    const getFallbackLogoUrl = (node: DistroNode) => {
-        if (node.icon) return node.icon;
-        const slug = node.id.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return `https://distrowatch.com/images/y9go/${slug}.png`;
-    };
-
-    const parseDate = useCallback((d?: string) => {
-        if (!d) return new Date(8640000000000000);
-        const parts = d.split(/[.-]/);
-        const year = parseInt(parts[0]);
-        const month = parts[1] ? parseInt(parts[1]) - 1 : 0;
-        const day = parts[2] ? parseInt(parts[2]) : 1;
-        return new Date(year, month, day);
-    }, []);
-
-    const getYear = useCallback((d?: string | null) => {
-        if (!d) return 9999;
-        const date = parseDate(d);
-        if (date.getFullYear() > 3000) return 9999;
-        const startOfYear = new Date(date.getFullYear(), 0, 1);
-        const dayOfYear = (date.getTime() - startOfYear.getTime()) / 86400000;
-        return date.getFullYear() + (dayOfYear / 366);
-    }, [parseDate]);
 
     const childrenMap = useMemo(() => {
         const map = new Map<string, DistroNode[]>();
@@ -136,7 +116,7 @@ const FamilyTree: React.FC = () => {
             selectedChildren: selectedChildrenCount,
             selectedName: activeHighlightNode?.name
         };
-    }, [distroData, timelineYear, activeHighlightNode, getYear, showAll]);
+    }, [distroData, timelineYear, activeHighlightNode, showAll]);
 
     // Escape key: close panel + clear search
     useEffect(() => {
@@ -386,11 +366,8 @@ const FamilyTree: React.FC = () => {
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
         const search = searchTerm.trim().toLowerCase();
 
-        // Popularity rank helper — rank ≤ 100 = primary (large label), else secondary
-        const getRank = (d: any): number => {
-            const pop = d?.data?.popularity;
-            return pop ? parseInt(pop) : 9999;
-        };
+        // Popularity rank helper (wraps shared util for D3 datum shape)
+        const getRank = (d: any): number => getPopularityRank(d?.data ?? {});
 
         // Grid Update
         const yearsToDraw = d3.range(1991, 2027, 1);
@@ -636,7 +613,7 @@ const FamilyTree: React.FC = () => {
         }
         prevHighlightIdRef.current = newHighlightId;
 
-    }, [distroData, timelineYear, searchTerm, showAll, selectedNode, currentYear, getYear, parseDate, activeHighlightNode, childrenMap]);
+    }, [distroData, timelineYear, searchTerm, showAll, selectedNode, currentYear, activeHighlightNode, childrenMap]);
 
     if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
@@ -701,23 +678,10 @@ const FamilyTree: React.FC = () => {
                                 <div>
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <h2 className="text-2xl font-black text-white leading-tight">{selectedNode.name}</h2>
-                                        {selectedNode.popularity && (
-                                            <span className="text-[11px] font-black bg-yellow-400 text-slate-900 rounded-lg px-2 py-0.5 whitespace-nowrap">
-                                                #{selectedNode.popularity} popularity
-                                            </span>
-                                        )}
+                                        <PopularityBadge node={selectedNode} />
                                     </div>
                                     <p className="text-xs text-slate-400 font-medium uppercase mt-1">{selectedNode.parent ? `Ancestor: ${selectedNode.parent}` : 'Origin Project'}</p>
-                                    {ancestryPath.length > 1 && (
-                                        <div className="flex flex-wrap items-center gap-1 mt-2">
-                                            {ancestryPath.map((name, i) => (
-                                                <span key={name} className="flex items-center gap-1 text-[10px]">
-                                                    {i > 0 && <span className="text-slate-700">›</span>}
-                                                    <span className={i === ancestryPath.length - 1 ? 'text-cyan-400 font-bold' : 'text-slate-500'}>{name}</span>
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
+                                    <AncestryBreadcrumb path={ancestryPath} />
                                 </div>
                                 <div className="bg-white p-4 rounded-3xl shadow-2xl w-24 h-24 flex-shrink-0 flex items-center justify-center overflow-hidden">
                                     <img src={getLogoUrl(selectedNode)} alt="" className="w-20 h-20 object-contain z-10" onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = getFallbackLogoUrl(selectedNode); }} />
@@ -732,20 +696,7 @@ const FamilyTree: React.FC = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-            {hoverInfo && (
-                <div
-                    className="fixed z-50 pointer-events-none bg-slate-900/95 border border-slate-700/50 rounded-lg px-3 py-2 shadow-xl"
-                    style={{ left: hoverInfo.x + 14, top: hoverInfo.y - 40 }}
-                >
-                    <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-white">{hoverInfo.node.name}</p>
-                        {hoverInfo.node.popularity && (
-                            <span className="text-[10px] font-black bg-yellow-400 text-slate-900 rounded px-1.5 py-0.5">#{hoverInfo.node.popularity}</span>
-                        )}
-                    </div>
-                    <p className="text-xs text-slate-400">{hoverInfo.node.start?.slice(0, 4) ?? '?'}{hoverInfo.node.stop ? ` – ${hoverInfo.node.stop.slice(0, 4)}` : ' – present'}</p>
-                </div>
-            )}
+            {hoverInfo && <HoverTooltip node={hoverInfo.node} x={hoverInfo.x} y={hoverInfo.y} />}
             <AnimatePresence>
                 {showVideoModal && (
                     <VideoExportModal

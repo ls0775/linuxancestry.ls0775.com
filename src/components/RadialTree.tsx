@@ -5,6 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ExternalLink, Calendar, Search, Maximize2, X, Download } from 'lucide-react';
 import TimelineControls from './TimelineControls';
 import { useDistroData, type DistroNode } from '../hooks/useDistroData';
+import {
+    parseDate, getYear, getLogoUrl, getFallbackLogoUrl,
+    isPrimaryDistro,
+    HoverTooltip, PopularityBadge, AncestryBreadcrumb,
+} from '../utils/distroUtils';
 
 const RadialTree: React.FC = () => {
     const { data: distroData, isLoading } = useDistroData();
@@ -21,31 +26,6 @@ const RadialTree: React.FC = () => {
 
     const currentYear = new Date().getFullYear();
     const [timelineYear, setTimelineYear] = useState(currentYear);
-
-    const getLogoUrl = (node: DistroNode) => `/logos/${node.id}.png`;
-    const getFallbackLogoUrl = (node: DistroNode) => {
-        if (node.icon) return node.icon;
-        const slug = node.id.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return `https://distrowatch.com/images/y9go/${slug}.png`;
-    };
-
-    const parseDate = useCallback((d?: string) => {
-        if (!d) return new Date(8640000000000000);
-        const parts = d.split(/[.-]/);
-        const year = parseInt(parts[0]);
-        const month = parts[1] ? parseInt(parts[1]) - 1 : 0;
-        const day = parts[2] ? parseInt(parts[2]) : 1;
-        return new Date(year, month, day);
-    }, []);
-
-    const getYear = useCallback((d?: string | null) => {
-        if (!d) return 9999;
-        const date = parseDate(d);
-        if (date.getFullYear() > 3000) return 9999;
-        const startOfYear = new Date(date.getFullYear(), 0, 1);
-        const dayOfYear = (date.getTime() - startOfYear.getTime()) / 86400000;
-        return date.getFullYear() + (dayOfYear / 366);
-    }, [parseDate]);
 
     // Derived active node for lineage (either explicitly clicked or searched)
     const activeHighlightNode = useMemo(() => {
@@ -115,7 +95,7 @@ const RadialTree: React.FC = () => {
             selectedChildren: selectedChildrenCount,
             selectedName: activeHighlightNode?.name
         };
-    }, [distroData, timelineYear, activeHighlightNode, getYear, showAll]);
+    }, [distroData, timelineYear, activeHighlightNode, showAll]);
 
     // D3 Persistence
     useEffect(() => {
@@ -365,7 +345,7 @@ const RadialTree: React.FC = () => {
         }
         prevHighlightIdRef.current = newHighlightId;
 
-    }, [distroData, searchTerm, selectedNode, showAll, getYear, parseDate, timelineYear, currentYear, activeHighlightNode]);
+    }, [distroData, searchTerm, selectedNode, showAll, timelineYear, currentYear, activeHighlightNode]);
 
     const handleResetZoom = () => {
         if (!svgRef.current || !containerRef.current || !zoomRef.current) return;
@@ -494,22 +474,15 @@ const RadialTree: React.FC = () => {
                         <div className="absolute top-0 left-0 w-full h-3" style={{ backgroundColor: selectedNode.color || '#06b6d4' }}></div>
                         <div className="flex items-start gap-8 mb-10">
                             <div className="flex-1">
-                                <h2 className="text-4xl font-black text-white leading-[0.9] mb-4">{selectedNode.name}</h2>
+                                <div className="flex items-center gap-2 flex-wrap mb-2">
+                                    <h2 className="text-4xl font-black text-white leading-[0.9]">{selectedNode.name}</h2>
+                                    <PopularityBadge node={selectedNode} />
+                                </div>
                                 <p className="text-[10px] text-cyan-400 font-black tracking-[0.3em] uppercase opacity-70">{selectedNode.parent ? `Ancestor: ${selectedNode.parent}` : 'Origin Project'}</p>
-                                {ancestryPath.length > 1 && (
-                                    <div className="flex flex-wrap items-center gap-1 mt-2">
-                                        {ancestryPath.map((name, i) => (
-                                            <span key={name} className="flex items-center gap-1 text-[10px]">
-                                                {i > 0 && <span className="text-slate-700">›</span>}
-                                                <span className={i === ancestryPath.length - 1 ? 'text-cyan-400 font-bold' : 'text-slate-500'}>{name}</span>
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
+                                <AncestryBreadcrumb path={ancestryPath} />
                             </div>
-                            <div className="bg-white p-4 rounded-3xl shadow-2xl flex items-center justify-center w-24 h-24 relative overflow-hidden">
+                            <div className="bg-white p-4 rounded-3xl shadow-2xl flex items-center justify-center w-24 h-24 flex-shrink-0 overflow-hidden">
                                 <img src={getLogoUrl(selectedNode)} alt="" className="w-20 h-20 object-contain z-10" onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = getFallbackLogoUrl(selectedNode); }} />
-                                {selectedNode.popularity && <div className="absolute top-0 right-0 bg-yellow-400 text-slate-900 text-[8px] font-black px-2 py-1 rounded-bl-xl z-20 shadow-sm">#{selectedNode.popularity}</div>}
                             </div>
                         </div>
                         <div className="space-y-8 mb-12">
@@ -531,15 +504,7 @@ const RadialTree: React.FC = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-            {hoverInfo && (
-                <div
-                    className="fixed z-50 pointer-events-none bg-slate-900/95 border border-slate-700/50 rounded-lg px-3 py-2 shadow-xl"
-                    style={{ left: hoverInfo.x + 14, top: hoverInfo.y - 40 }}
-                >
-                    <p className="text-sm font-bold text-white">{hoverInfo.node.name}</p>
-                    <p className="text-xs text-slate-400">{hoverInfo.node.start?.slice(0, 4) ?? '?'}{hoverInfo.node.stop ? ` – ${hoverInfo.node.stop.slice(0, 4)}` : ' – present'}</p>
-                </div>
-            )}
+            {hoverInfo && <HoverTooltip node={hoverInfo.node} x={hoverInfo.x} y={hoverInfo.y} />}
         </div>
     );
 };
