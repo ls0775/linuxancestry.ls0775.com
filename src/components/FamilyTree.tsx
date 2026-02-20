@@ -316,7 +316,7 @@ const FamilyTree: React.FC = () => {
                     gZoom.selectAll('.node-label')
                         .style('font-size', function(d: any) {
                             const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
-                            return ((rank <= 100 ? 14 : 9) / k) + 'px';
+                            return ((rank <= 100 ? 12 : 9) / k) + 'px';
                         })
                         .style('display', function(d: any) {
                             const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
@@ -593,7 +593,7 @@ const FamilyTree: React.FC = () => {
         gNode.selectAll('.node-label')
             .style('font-size', function(d: any) {
                 const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
-                return ((rank <= 100 ? 14 : 9) / currentK) + 'px';
+                return ((rank <= 100 ? 12 : 9) / currentK) + 'px';
             })
             .style('font-weight', function(d: any) {
                 const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
