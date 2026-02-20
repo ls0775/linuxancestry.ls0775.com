@@ -138,6 +138,7 @@ const FamilyTree: React.FC = () => {
         gGrid: any,
         gLink: any,
         gNode: any,
+        gStickyAxis: any,
         xScale: any,
         treeLayout: any,
         margin: any
@@ -318,17 +319,43 @@ const FamilyTree: React.FC = () => {
             const svg = d3.select(svgRef.current).attr('width', width).attr('height', height);
             svg.selectAll('*').remove();
             const gZoom = svg.append('g');
+            // Sticky axis lives outside gZoom so it stays at fixed screen position
+            const gStickyAxis = svg.append('g').attr('class', 'sticky-axis').attr('pointer-events', 'none');
 
             const xScale = d3.scaleLinear().domain([1991, 2026]).range([0, CHART_WIDTH]);
             const gGrid = gZoom.append('g').attr('class', 'year-grid');
             const gLink = gZoom.append('g').attr('class', 'links');
             const gNode = gZoom.append('g').attr('class', 'nodes');
 
+            const updateStickyAxis = (transform: d3.ZoomTransform) => {
+                const k = transform.k;
+                const tx = transform.x;
+                const years = d3.range(1991, 2027);
+                const labels = gStickyAxis.selectAll<SVGTextElement, number>('text').data(years);
+                labels.enter().append('text')
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#94a3b8')
+                    .style('pointer-events', 'none')
+                    .merge(labels as any)
+                    .attr('x', (y: number) => xScale(y) * k + tx)
+                    .attr('y', 28)
+                    .style('font-size', (y: number) => (y % 5 === 0 ? '13' : '10') + 'px')
+                    .style('font-weight', (y: number) => y % 5 === 0 ? '700' : '400')
+                    .style('fill', (y: number) => y % 5 === 0 ? '#cbd5e1' : '#475569')
+                    .style('display', function(y: number) {
+                        const screenSpacing = xScale(1992) * k - xScale(1991) * k;
+                        if (y % 5 === 0) return screenSpacing >= 8 ? null : 'none';
+                        return screenSpacing >= 30 ? null : 'none';
+                    })
+                    .text((y: number) => y);
+            };
+
             const zoom = d3.zoom<SVGSVGElement, unknown>()
                 .scaleExtent([0.001, 4])
                 .on('zoom', (event) => {
                     const k = event.transform.k;
                     gZoom.attr('transform', event.transform);
+                    updateStickyAxis(event.transform);
                     gZoom.selectAll('.year-label-major').style('font-size', (24 / k) + 'px');
                     gZoom.selectAll('.year-label-minor')
                         .style('font-size', (14 / k) + 'px')
@@ -352,11 +379,13 @@ const FamilyTree: React.FC = () => {
             const initScale = Math.min((width - 80) / CHART_WIDTH, (height - 80) / CHART_HEIGHT);
             const initTx = (width - CHART_WIDTH * initScale) / 2;
             const initTy = (height - CHART_HEIGHT * initScale) / 2;
-            svg.call(zoom.transform as any, d3.zoomIdentity.translate(initTx, initTy).scale(initScale));
+            const initTransform = d3.zoomIdentity.translate(initTx, initTy).scale(initScale);
+            svg.call(zoom.transform as any, initTransform);
+            updateStickyAxis(initTransform);
 
             const treeLayout = d3.tree<DistroNode>().size([CHART_HEIGHT, CHART_WIDTH]).separation((a, b) => (a.parent === b.parent ? 15 : 30));
 
-            groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, margin };
+            groupsRef.current = { gZoom, gGrid, gLink, gNode, gStickyAxis, xScale, treeLayout, margin };
         }
 
         // Perform Update
