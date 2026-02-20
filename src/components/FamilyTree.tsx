@@ -155,6 +155,24 @@ const FamilyTree: React.FC = () => {
         );
     }, []);
 
+    // Pan to keep the current year centred when timeline year changes (play or scrub)
+    const prevTimelineYearRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (!svgRef.current || !containerRef.current || !zoomRef.current || !groupsRef.current) return;
+        if (prevTimelineYearRef.current === timelineYear) return;
+        prevTimelineYearRef.current = timelineYear;
+
+        const { xScale } = groupsRef.current;
+        const t = d3.zoomTransform(svgRef.current);
+        const w = containerRef.current.clientWidth;
+        // Keep year at 40% from left; preserve current k and vertical position
+        const targetX = w * 0.4 - xScale(timelineYear) * t.k;
+        d3.select(svgRef.current).transition().duration(400).ease(d3.easeLinear).call(
+            zoomRef.current.transform,
+            d3.zoomIdentity.translate(targetX, t.y).scale(t.k)
+        );
+    }, [timelineYear]);
+
     const handleReset = () => {
         setSearchTerm('');
         setShowAll(false);
