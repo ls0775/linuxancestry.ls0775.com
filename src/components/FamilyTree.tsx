@@ -1,26 +1,34 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
-import { Search, Info, X } from 'lucide-react';
+import { Search, Info, X, Maximize2, Download, Video } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import TimelineControls from './TimelineControls';
+import VideoExportModal from './VideoExportModal';
 import { useDistroData, type DistroNode } from '../hooks/useDistroData';
+
+const CHART_WIDTH = 32000;
+const CHART_HEIGHT = 40000;
 
 const FamilyTree: React.FC = () => {
     const { data: distroData, isLoading } = useDistroData();
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    
+
     // State
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
-    const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
     const [showAll, setShowAll] = useState(false);
-    
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [hoverInfo, setHoverInfo] = useState<{ node: DistroNode; x: number; y: number } | null>(null);
+    const [showVideoModal, setShowVideoModal] = useState(false);
+    const prevHighlightIdRef = useRef<string | null>(null);
+
     const currentYear = new Date().getFullYear();
     const [timelineYear, setTimelineYear] = useState(currentYear);
 
-    const getLogoUrl = (node: DistroNode) => {
-        if (node.logo) return node.logo;
+    const getLogoUrl = (node: DistroNode) => `/logos/${node.id}.png`;
+    const getFallbackLogoUrl = (node: DistroNode) => {
         if (node.icon) return node.icon;
         const slug = node.id.toLowerCase().replace(/[^a-z0-9]/g, '');
         return `https://distrowatch.com/images/y9go/${slug}.png`;
@@ -44,6 +52,17 @@ const FamilyTree: React.FC = () => {
         return date.getFullYear() + (dayOfYear / 366);
     }, [parseDate]);
 
+    const childrenMap = useMemo(() => {
+        const map = new Map<string, DistroNode[]>();
+        distroData.forEach(d => {
+            if (d.parent) {
+                if (!map.has(d.parent)) map.set(d.parent, []);
+                map.get(d.parent)!.push(d);
+            }
+        });
+        return map;
+    }, [distroData]);
+
     // Derived active node for lineage (either explicitly clicked or searched)
     const activeHighlightNode = useMemo(() => {
         if (selectedNode) return selectedNode;
@@ -51,6 +70,33 @@ const FamilyTree: React.FC = () => {
         const search = searchTerm.trim().toLowerCase();
         return distroData.find(d => d.name.toLowerCase() === search || d.id.toLowerCase() === search) || null;
     }, [selectedNode, searchTerm, distroData]);
+
+    const suggestions = useMemo(() => {
+        if (searchTerm.trim().length < 2) return [];
+        const s = searchTerm.trim().toLowerCase();
+        return distroData
+            .filter(d => d.name.toLowerCase().includes(s))
+            .sort((a, b) => {
+                const ap = a.name.toLowerCase().startsWith(s);
+                const bp = b.name.toLowerCase().startsWith(s);
+                if (ap && !bp) return -1;
+                if (!ap && bp) return 1;
+                return a.name.localeCompare(b.name);
+            })
+            .slice(0, 8);
+    }, [searchTerm, distroData]);
+
+    const ancestryPath = useMemo(() => {
+        if (!selectedNode) return [] as string[];
+        const idMap = new Map(distroData.map(d => [d.id, d]));
+        const path: string[] = [];
+        let curr: DistroNode | undefined = selectedNode;
+        while (curr && path.length < 8) {
+            path.unshift(curr.name);
+            curr = curr.parent ? idMap.get(curr.parent) : undefined;
+        }
+        return path;
+    }, [selectedNode, distroData]);
 
     // Calculate ecosystem statistics
     const stats = useMemo(() => {
@@ -68,12 +114,17 @@ const FamilyTree: React.FC = () => {
 
         let selectedChildrenCount = 0;
         if (activeHighlightNode) {
+            const filteredChildrenMap = new Map<string, DistroNode[]>();
+            filterMatched.forEach(d => {
+                if (d.parent) {
+                    if (!filteredChildrenMap.has(d.parent)) filteredChildrenMap.set(d.parent, []);
+                    filteredChildrenMap.get(d.parent)!.push(d);
+                }
+            });
             const countDescendants = (pid: string): number => {
-                const direct = filterMatched.filter(d => d.parent === pid);
+                const direct = filteredChildrenMap.get(pid) ?? [];
                 let total = direct.length;
-                direct.forEach(child => {
-                    total += countDescendants(child.id);
-                });
+                direct.forEach(child => { total += countDescendants(child.id); });
                 return total;
             };
             selectedChildrenCount = countDescendants(activeHighlightNode.id);
@@ -87,8 +138,21 @@ const FamilyTree: React.FC = () => {
         };
     }, [distroData, timelineYear, activeHighlightNode, getYear, showAll]);
 
+    // Escape key: close panel + clear search
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setSelectedNode(null);
+                setSearchTerm('');
+                setShowSuggestions(false);
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, []);
+
     // D3 Persistence
-    const zoomRef = useRef<any>(null);
+    const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
     const groupsRef = useRef<{
         gZoom: any,
         gGrid: any,
@@ -99,19 +163,166 @@ const FamilyTree: React.FC = () => {
         margin: any
     } | null>(null);
 
+    const fitAll = useCallback(() => {
+        if (!svgRef.current || !containerRef.current || !zoomRef.current) return;
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        const scale = Math.min((w - 80) / CHART_WIDTH, (h - 80) / CHART_HEIGHT);
+        const tx = (w - CHART_WIDTH * scale) / 2;
+        const ty = (h - CHART_HEIGHT * scale) / 2;
+        d3.select(svgRef.current).transition().duration(750).call(
+            zoomRef.current.transform,
+            d3.zoomIdentity.translate(tx, ty).scale(scale)
+        );
+    }, []);
+
+    // Hidden canvas for video recording
+    const cinematicCanvasRef = useRef<HTMLCanvasElement>(null);
+
+    /** Compute D3 zoom transform that centres a given year at ~35% from left, logos visible (k=0.45) */
+    const getCinematicTransform = useCallback((year: number) => {
+        if (!groupsRef.current || !containerRef.current) return null;
+        const { xScale } = groupsRef.current;
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        const k = 0.45;
+        const tx = w * 0.35 - xScale(year) * k;
+        const ty = h * 0.5 - (CHART_HEIGHT / 2) * k;
+        return { x: tx, y: ty, k };
+    }, []);
+
+    /** Smoothly move the camera to a precomputed transform */
+    const applyCinematicCamera = useCallback((t: { x: number; y: number; k: number }, durationMs: number) => {
+        if (!svgRef.current || !zoomRef.current) return;
+        d3.select(svgRef.current)
+            .transition()
+            .duration(durationMs)
+            .ease(d3.easeCubicInOut)
+            .call(zoomRef.current.transform, d3.zoomIdentity.translate(t.x, t.y).scale(t.k));
+    }, []);
+
     const handleReset = () => {
         setSearchTerm('');
         setShowAll(false);
         setSelectedNode(null);
-        setCollapsedIds(new Set());
         setTimelineYear(currentYear);
-        if (svgRef.current && zoomRef.current) {
-            d3.select(svgRef.current).transition().duration(750).call(
-                zoomRef.current.transform,
-                d3.zoomIdentity.translate(50, 50).scale(0.1)
-            );
-        }
+        fitAll();
     };
+
+    const exportImage = useCallback(() => {
+        if (!svgRef.current || !groupsRef.current) return;
+        const { gNode } = groupsRef.current;
+        const isFiltered = !!(searchTerm.trim() && activeHighlightNode);
+
+        // Bounding box of currently visible nodes in SVG coordinate space
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        let nodeCount = 0;
+        (gNode.selectAll('g.node-group').nodes() as SVGGElement[]).forEach(el => {
+            const d = d3.select(el).datum() as any;
+            if (d) {
+                minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x);
+                minY = Math.min(minY, d.y); maxY = Math.max(maxY, d.y);
+                nodeCount++;
+            }
+        });
+
+        const PAD = 600;
+        const vx = isFiltered ? Math.max(0, minX - PAD) : 0;
+        const vy = isFiltered ? Math.max(-200, minY - PAD) : -200;
+        const vw = isFiltered ? (maxX - minX + PAD * 2) : CHART_WIDTH;
+        const vh = isFiltered ? (maxY - minY + PAD * 2) : CHART_HEIGHT + 400;
+
+        // Scale to guarantee readable, non-overlapping labels.
+        // Each node needs at least DESIRED_PX_PER_NODE px of vertical space in output.
+        const DESIRED_PX_PER_NODE = 22;
+        const DESIRED_FONT_PX = 13;
+        const baseScale = 3520 / vw;                           // Wikipedia reference width
+        const readScale = (nodeCount * DESIRED_PX_PER_NODE) / vh; // min for no-overlap
+        const es = Math.max(baseScale, readScale);
+        const TARGET_W = Math.round(vw * es);
+        const TARGET_H = Math.round(vh * es);
+
+        const svgClone = svgRef.current.cloneNode(true) as SVGSVGElement;
+        svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        svgClone.setAttribute('width', String(TARGET_W));
+        svgClone.setAttribute('height', String(TARGET_H));
+        svgClone.setAttribute('viewBox', `${vx} ${vy} ${vw} ${vh}`);
+
+        // Remove D3 zoom transform
+        const gZoomEl = svgClone.querySelector('g') as SVGGElement | null;
+        if (gZoomEl) gZoomEl.removeAttribute('transform');
+
+        // Dark background
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bg.setAttribute('x', String(vx)); bg.setAttribute('y', String(vy));
+        bg.setAttribute('width', String(vw)); bg.setAttribute('height', String(vh));
+        bg.setAttribute('fill', '#0f172a');
+        svgClone.insertBefore(bg, svgClone.firstChild);
+
+        // Font in SVG units = desired screen px / export scale
+        const labelFontSVG = Math.round(DESIRED_FONT_PX / es);
+        const yearFontSVG  = Math.round(14 / es);
+        const yearMinorSVG = Math.round(10 / es);
+        const CIRCLE_R = 24;
+
+        // Year labels: fixed SVG-unit sizes, always show major; minor only for filtered
+        svgClone.querySelectorAll('.year-label-major').forEach(el => {
+            const s = el as SVGElement;
+            s.style.fontSize = `${yearFontSVG}px`;
+            s.style.display = '';
+            s.setAttribute('font-family', 'system-ui, sans-serif');
+        });
+        svgClone.querySelectorAll('.year-label-minor').forEach(el => {
+            const s = el as SVGElement;
+            s.style.fontSize = `${yearMinorSVG}px`;
+            s.style.display = isFiltered ? '' : 'none';
+            s.setAttribute('font-family', 'system-ui, sans-serif');
+        });
+
+        // All node labels: anchor to the RIGHT of the circle so vertical overlap
+        // is impossible (each node has a unique y in the tidy tree layout).
+        svgClone.querySelectorAll('g.node-group').forEach(el => {
+            const textEl = el.querySelector('text') as SVGElement | null;
+            if (textEl) {
+                textEl.style.fontSize = `${labelFontSVG}px`;
+                textEl.style.display = '';
+                textEl.setAttribute('text-anchor', 'start');
+                textEl.setAttribute('x', String(CIRCLE_R + 8));
+                textEl.removeAttribute('dy');
+                textEl.setAttribute('dominant-baseline', 'middle');
+                textEl.setAttribute('font-family', 'system-ui, sans-serif');
+                textEl.setAttribute('font-weight', '700');
+            }
+        });
+
+        // Title
+        const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        titleEl.setAttribute('x', String(Math.round(vx + vw / 2)));
+        titleEl.setAttribute('y', String(Math.round(vy + Math.round(20 / es))));
+        titleEl.setAttribute('text-anchor', 'middle');
+        titleEl.setAttribute('fill', '#94a3b8');
+        titleEl.style.fontSize = `${Math.round(18 / es)}px`;
+        titleEl.setAttribute('font-weight', '700');
+        titleEl.setAttribute('font-family', 'system-ui, -apple-system, sans-serif');
+        titleEl.textContent = isFiltered
+            ? `${activeHighlightNode!.name} — Linux Distribution Family`
+            : 'Linux Distribution Timeline';
+        svgClone.appendChild(titleEl);
+
+        const xml = new XMLSerializer().serializeToString(svgClone);
+        const blob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n', xml], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const slug = isFiltered
+            ? activeHighlightNode!.name.toLowerCase().replace(/\s+/g, '-')
+            : 'full';
+        a.download = `linux-ancestry-${slug}.svg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, [searchTerm, activeHighlightNode]);
 
     // Unified Initialization and Update Effect
     useEffect(() => {
@@ -122,15 +333,13 @@ const FamilyTree: React.FC = () => {
         if (width === 0 || height === 0) return;
 
         const margin = { top: 100, right: 100, bottom: 100, left: 100 };
-        const chartWidth = 32000; 
-        const chartHeight = 40000; 
 
         if (!groupsRef.current) {
             const svg = d3.select(svgRef.current).attr('width', width).attr('height', height);
             svg.selectAll('*').remove();
             const gZoom = svg.append('g');
 
-            const xScale = d3.scaleLinear().domain([1991, 2026]).range([0, chartWidth]);
+            const xScale = d3.scaleLinear().domain([1991, 2026]).range([0, CHART_WIDTH]);
             const gGrid = gZoom.append('g').attr('class', 'year-grid');
             const gLink = gZoom.append('g').attr('class', 'links');
             const gNode = gZoom.append('g').attr('class', 'nodes');
@@ -138,17 +347,35 @@ const FamilyTree: React.FC = () => {
             const zoom = d3.zoom<SVGSVGElement, unknown>()
                 .scaleExtent([0.001, 4])
                 .on('zoom', (event) => {
+                    const k = event.transform.k;
                     gZoom.attr('transform', event.transform);
-                    gZoom.selectAll('.year-label-major').style('font-size', (24 / event.transform.k) + 'px');
-                    gZoom.selectAll('.year-label-minor').style('font-size', (14 / event.transform.k) + 'px');
+                    gZoom.selectAll('.year-label-major').style('font-size', (24 / k) + 'px');
+                    gZoom.selectAll('.year-label-minor')
+                        .style('font-size', (14 / k) + 'px')
+                        .style('display', (k >= 0.3 ? null : 'none') as any);
+                    gZoom.selectAll('.node-label')
+                        .style('font-size', function(d: any) {
+                            const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                            return ((rank <= 100 ? 16 : 9) / k) + 'px';
+                        })
+                        .attr('dy', Math.max(56, 20 / k))
+                        .style('display', function(d: any) {
+                            const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                            return (rank <= 100 ? k >= 0.05 : k >= 0.12) ? null : 'none';
+                        } as any);
+                    gZoom.selectAll('.node-logo, .node-logo-bg')
+                        .style('display', (k >= 0.4 ? '' : 'none') as any);
                 });
             zoomRef.current = zoom;
             svg.call(zoom).on('click', () => { setSelectedNode(null); });
 
-            // Closer initial view for readability
-            svg.call(zoom.transform as any, d3.zoomIdentity.translate(margin.left, height/4).scale(0.12));
+            // Fit full extent on init
+            const initScale = Math.min((width - 80) / CHART_WIDTH, (height - 80) / CHART_HEIGHT);
+            const initTx = (width - CHART_WIDTH * initScale) / 2;
+            const initTy = (height - CHART_HEIGHT * initScale) / 2;
+            svg.call(zoom.transform as any, d3.zoomIdentity.translate(initTx, initTy).scale(initScale));
 
-            const treeLayout = d3.tree<DistroNode>().size([chartHeight, chartWidth]).separation((a, b) => (a.parent === b.parent ? 15 : 30));
+            const treeLayout = d3.tree<DistroNode>().size([CHART_HEIGHT, CHART_WIDTH]).separation((a, b) => (a.parent === b.parent ? 15 : 30));
 
             groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, margin };
         }
@@ -159,7 +386,13 @@ const FamilyTree: React.FC = () => {
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
         const search = searchTerm.trim().toLowerCase();
 
-        // Grid Update - STAGGERED
+        // Popularity rank helper — rank ≤ 100 = primary (large label), else secondary
+        const getRank = (d: any): number => {
+            const pop = d?.data?.popularity;
+            return pop ? parseInt(pop) : 9999;
+        };
+
+        // Grid Update
         const yearsToDraw = d3.range(1991, 2027, 1);
         const gridLines = gGrid.selectAll('line').data(yearsToDraw);
         gridLines.enter().append('line')
@@ -168,9 +401,9 @@ const FamilyTree: React.FC = () => {
             .attr('stroke-opacity', (d: any) => d % 5 === 0 ? 0.5 : 0.2)
             .merge(gridLines as any)
             .attr('x1', (d: any) => xScale(d)).attr('x2', (d: any) => xScale(d))
-            .attr('y1', -200).attr('y2', chartHeight + 200);
+            .attr('y1', -200).attr('y2', CHART_HEIGHT + 200);
 
-        const gridLabels = gGrid.selectAll('text').data(yearsToDraw.flatMap(y => [{y, pos:'top'}, {y, pos:'bottom'}]));
+        const gridLabels = gGrid.selectAll('text').data(yearsToDraw.flatMap(y => [{ y, pos: 'top' }, { y, pos: 'bottom' }]));
         gridLabels.enter().append('text')
             .attr('class', (d: any) => d.y % 5 === 0 ? 'year-label-major' : 'year-label-minor')
             .attr('text-anchor', 'middle').attr('fill', '#64748b')
@@ -178,13 +411,19 @@ const FamilyTree: React.FC = () => {
             .merge(gridLabels as any)
             .attr('x', (d: any) => xScale(d.y))
             .attr('y', (d: any) => {
-                const base = d.pos === 'top' ? -40 : chartHeight + 100;
-                // Stagger minor years closer to axis, major years further away
+                const base = d.pos === 'top' ? -40 : CHART_HEIGHT + 100;
                 const offset = d.y % 5 === 0 ? (d.pos === 'top' ? -60 : 60) : 0;
                 return base + offset;
             })
             .style('font-size', (d: any) => d.y % 5 === 0 ? '24px' : '14px')
+            .style('display', (d: any) => d.y % 5 === 0 ? null : 'none')
             .text((d: any) => d.y);
+
+        // Sync minor label visibility with current zoom (handles re-renders mid-zoom)
+        const currentK = d3.zoomTransform(svgRef.current!).k;
+        if (currentK >= 0.3) {
+            gGrid.selectAll('.year-label-minor').style('display', null);
+        }
 
         // Data Filtering
         let filteredData = distroData.filter((d) => {
@@ -199,12 +438,12 @@ const FamilyTree: React.FC = () => {
         if (activeHighlightNode) {
             const idMap = new Map(distroData.map(d => [d.id, d]));
             let curr: DistroNode | undefined = activeHighlightNode;
-            while (curr) { 
-                relatedIds.add(curr.id); 
-                curr = curr.parent ? idMap.get(curr.parent) : undefined; 
+            while (curr) {
+                relatedIds.add(curr.id);
+                curr = curr.parent ? idMap.get(curr.parent) : undefined;
             }
             const addDescendants = (pid: string) => {
-                distroData.filter(d => d.parent === pid).forEach(child => {
+                (childrenMap.get(pid) ?? []).forEach(child => {
                     if (relatedIds.has(child.id)) return;
                     relatedIds.add(child.id);
                     addDescendants(child.id);
@@ -219,7 +458,7 @@ const FamilyTree: React.FC = () => {
 
         const linuxRootNode: DistroNode = { id: "Linux_Original", name: "Linux", parent: null, isVirtual: false, start: "1991-09-17" };
         const nodeIds = new Set(filteredData.map(d => d.id));
-        let dataForStratify = [
+        const dataForStratify = [
             linuxRootNode,
             ...filteredData.map((d) => ({
                 ...d,
@@ -231,13 +470,13 @@ const FamilyTree: React.FC = () => {
         const finalStratify = d3.stratify<DistroNode>().id(d => d.id).parentId(d => (d.id === 'Linux_Original') ? null : (d.parent && currentVisibleIds.has(d.parent) ? d.parent : 'Linux_Original'));
 
         let root: d3.HierarchyNode<DistroNode>;
-        try { root = finalStratify(dataForStratify); } catch (e) { return; }
-        
+        try { root = finalStratify(dataForStratify); } catch { return; }
+
         treeLayout(root);
         root.descendants().forEach((node: any) => {
-            const verticalLayoutPos = node.x; 
-            node.x = xScale(getYear(node.data.start)); 
-            node.y = verticalLayoutPos; 
+            const verticalLayoutPos = node.x;
+            node.x = xScale(getYear(node.data.start));
+            node.y = verticalLayoutPos;
         });
 
         const diagonal = d3.linkHorizontal<any, any>().x(d => d.x).y(d => d.y);
@@ -258,10 +497,60 @@ const FamilyTree: React.FC = () => {
                 event.stopPropagation();
                 if (d.data.id === 'Linux_Original') return;
                 setSelectedNode(d.data);
+                if (svgRef.current && containerRef.current && zoomRef.current) {
+                    const w = containerRef.current.clientWidth;
+                    const h = containerRef.current.clientHeight;
+                    const k = Math.max(d3.zoomTransform(svgRef.current).k, 0.25);
+                    d3.select(svgRef.current).transition().duration(600).call(
+                        zoomRef.current.transform,
+                        d3.zoomIdentity.translate(w / 2 - d.x * k, h / 2 - d.y * k).scale(k)
+                    );
+                }
             });
 
+        nodeEnter
+            .on('mouseenter', (event: any, d: any) => {
+                if (d.data.id === 'Linux_Original') return;
+                setHoverInfo({ node: d.data, x: event.clientX, y: event.clientY });
+            })
+            .on('mousemove', (event: any) => {
+                setHoverInfo(prev => prev ? { ...prev, x: event.clientX, y: event.clientY } : null);
+            })
+            .on('mouseleave', () => setHoverInfo(null));
+
         nodeEnter.append('circle').attr('r', 24).attr('stroke-width', 8);
-        nodeEnter.append('text').attr('text-anchor', 'middle').attr('fill', '#e2e8f0').style('pointer-events', 'none');
+
+        // Logo tile — white rounded-rect card matching the detail panel style, hidden until k >= 0.4
+        nodeEnter.append('clipPath')
+            .attr('id', (d: any) => `logo-clip-${d.data.id}`)
+            .append('rect')
+            .attr('x', -48).attr('y', -48)
+            .attr('width', 96).attr('height', 96)
+            .attr('rx', 20).attr('ry', 20);
+        nodeEnter.append('rect')
+            .attr('class', 'node-logo-bg')
+            .attr('x', -48).attr('y', -48)
+            .attr('width', 96).attr('height', 96)
+            .attr('rx', 20).attr('ry', 20)
+            .attr('fill', 'white')
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+        // Image inset 12px each side for clean padding
+        nodeEnter.append('image')
+            .attr('class', 'node-logo')
+            .attr('href', (d: any) => `/logos/${d.data.id}.png`)
+            .attr('x', -36).attr('y', -36)
+            .attr('width', 72).attr('height', 72)
+            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .attr('clip-path', (d: any) => `url(#logo-clip-${d.data.id})`)
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+        nodeEnter.append('text').attr('text-anchor', 'middle').attr('fill', '#e2e8f0').style('pointer-events', 'none')
+            .attr('dy', Math.max(56, 20 / currentK));
+
+        // Assign single class to all node labels
+        nodeSelection.merge(nodeEnter as any).select('text')
+            .attr('class', 'node-label');
 
         const nodeUpdate = nodeSelection.merge(nodeEnter as any).transition().duration(duration)
             .attr('opacity', (d: any) => !activeHighlightNode || relatedIds.has(d.data.id) ? 1 : 0.1)
@@ -280,13 +569,74 @@ const FamilyTree: React.FC = () => {
             .attr('r', (d: any) => activeHighlightNode && relatedIds.has(d.data.id) ? 32 : 24);
 
         nodeUpdate.select('text')
-            .attr('dy', 85)
-            .style('font-size', '64px') // DOUBLED font size
-            .attr('font-weight', '900')
+            .attr('font-weight', (d: any) => getRank(d) <= 100 ? '900' : '500')
             .attr('fill', (d: any) => activeHighlightNode && relatedIds.has(d.data.id) ? '#facc15' : '#e2e8f0')
             .text((d: any) => d.data.name);
 
-    }, [distroData, timelineYear, searchTerm, showAll, collapsedIds, selectedNode, currentYear, getYear, parseDate, activeHighlightNode]);
+        // Two-phase label cull:
+        //   Phase 1 — top-100 by popularity rank: always visible, never culled
+        //   Phase 2 — secondary: shown only if they don't overlap any visible label
+        const PRIMARY_RANK = 100;
+        const visibleScreenYs: { y: number; h: number }[] = [];
+        const cullCandidates: { svgY: number; el: SVGElement; rank: number }[] = [];
+        (gNode.selectAll('g.node-group').nodes() as SVGGElement[]).forEach(el => {
+            const d = d3.select(el).datum() as any;
+            const textEl = el.querySelector('text.node-label') as SVGElement | null;
+            if (textEl && d) cullCandidates.push({ svgY: d.y, el: textEl, rank: getRank(d) });
+        });
+
+        if (currentK < 0.05) {
+            cullCandidates.forEach(({ el }) => { el.style.display = 'none'; });
+        } else {
+            // Phase 1: top-100 always shown
+            cullCandidates.forEach(({ svgY, el, rank }) => {
+                if (rank <= PRIMARY_RANK) {
+                    el.style.display = '';
+                    visibleScreenYs.push({ y: svgY * currentK, h: 20 });
+                }
+            });
+            // Phase 2: secondary shown only if clear of all visible labels
+            cullCandidates.sort((a, b) => a.svgY - b.svgY);
+            cullCandidates.forEach(({ svgY, el, rank }) => {
+                if (rank > PRIMARY_RANK) {
+                    if (currentK < 0.12) { el.style.display = 'none'; return; }
+                    const screenY = svgY * currentK;
+                    const overlaps = visibleScreenYs.some(v => Math.abs(screenY - v.y) < v.h + 10);
+                    el.style.display = overlaps ? 'none' : '';
+                    if (!overlaps) visibleScreenYs.push({ y: screenY, h: 12 });
+                }
+            });
+        }
+
+        // Sync node label font size with current zoom (handles re-renders mid-zoom)
+        gNode.selectAll('.node-label')
+            .style('font-size', function(d: any) {
+                const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                return ((rank <= 100 ? 16 : 9) / currentK) + 'px';
+            })
+            .attr('dy', Math.max(56, 20 / currentK));
+
+        // Sync logo visibility with current zoom
+        gNode.selectAll('.node-logo, .node-logo-bg')
+            .style('display', (currentK >= 0.4 ? '' : 'none') as any);
+
+        // Auto-pan when a new highlight node is selected (search or click)
+        const newHighlightId = activeHighlightNode?.id ?? null;
+        if (newHighlightId && newHighlightId !== prevHighlightIdRef.current) {
+            const target = root.descendants().find((d: any) => d.data.id === newHighlightId) as any;
+            if (target && svgRef.current && containerRef.current && zoomRef.current) {
+                const w = containerRef.current.clientWidth;
+                const h = containerRef.current.clientHeight;
+                const scale = 0.3;
+                d3.select(svgRef.current).transition().duration(750).call(
+                    zoomRef.current.transform,
+                    d3.zoomIdentity.translate(w / 2 - target.x * scale, h / 2 - target.y * scale).scale(scale)
+                );
+            }
+        }
+        prevHighlightIdRef.current = newHighlightId;
+
+    }, [distroData, timelineYear, searchTerm, showAll, selectedNode, currentYear, getYear, parseDate, activeHighlightNode, childrenMap]);
 
     if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
@@ -296,10 +646,32 @@ const FamilyTree: React.FC = () => {
                 <div className="flex items-center gap-3">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input type="text" placeholder="Search distributions..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 pr-4 py-2 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 w-64" />
+                        <input
+                            type="text"
+                            placeholder="Search distributions..."
+                            value={searchTerm}
+                            onChange={(e) => { setSearchTerm(e.target.value); setShowSuggestions(true); }}
+                            onFocus={() => setShowSuggestions(true)}
+                            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                            className="pl-10 pr-4 py-2 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 w-64"
+                        />
+                        {showSuggestions && suggestions.length > 0 && (
+                            <div className="absolute top-full left-0 mt-1 w-64 bg-slate-900 border border-slate-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
+                                {suggestions.map(s => (
+                                    <button
+                                        key={s.id}
+                                        onMouseDown={() => { setSearchTerm(s.name); setShowSuggestions(false); }}
+                                        className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-slate-700/60 flex items-center justify-between gap-2"
+                                    >
+                                        <span className="truncate">{s.name}</span>
+                                        <span className="text-xs text-slate-500 shrink-0">{s.start?.slice(0, 4)}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <div className="flex bg-slate-800/90 backdrop-blur-md rounded-xl border border-slate-700/50 overflow-hidden">
-                        <button onClick={() => setShowAll(false)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${!showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>ACTIVE ONLY</button>
+                        <button onClick={() => setShowAll(false)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${!showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{`ACTIVE ${timelineYear}`}</button>
                         <button onClick={() => setShowAll(true)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>SHOW ALL</button>
                         <button onClick={handleReset} className="px-6 py-3 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-500/10 transition-all border-l border-slate-700/50">RESET</button>
                     </div>
@@ -307,16 +679,48 @@ const FamilyTree: React.FC = () => {
                 <div className="w-[30rem]"><TimelineControls minYear={1991} maxYear={currentYear} currentYear={timelineYear} onYearChange={setTimelineYear} stats={stats} /></div>
             </div>
             <svg ref={svgRef} className="w-full h-full" />
+            {/* Hidden canvas used by video recorder */}
+            <canvas ref={cinematicCanvasRef} style={{ display: 'none' }} />
+            <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+                <button onClick={fitAll} title="Fit all" className="p-3 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-slate-400 hover:text-white transition-all shadow-lg">
+                    <Maximize2 className="w-5 h-5" />
+                </button>
+                <button onClick={exportImage} title="Export SVG" className="p-3 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-slate-400 hover:text-cyan-400 transition-all shadow-lg">
+                    <Download className="w-5 h-5" />
+                </button>
+                <button onClick={() => setShowVideoModal(true)} title="Export Video" className="p-3 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-slate-400 hover:text-rose-400 transition-all shadow-lg">
+                    <Video className="w-5 h-5" />
+                </button>
+            </div>
             <AnimatePresence>
                 {selectedNode && (
-                    <motion.div initial={{ x: 400, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 400, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="absolute top-4 right-4 w-96 bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 rounded-3xl shadow-2xl overflow-hidden z-20">
+                    <motion.div initial={{ x: 400, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 400, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="absolute bottom-4 right-4 w-96 bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 rounded-3xl shadow-2xl overflow-hidden z-20">
                         <div className="p-8">
                             <button onClick={() => setSelectedNode(null)} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
                             <div className="flex items-start gap-6 mb-8">
-                                <div><h2 className="text-2xl font-black text-white leading-tight">{selectedNode.name}</h2><p className="text-xs text-slate-400 font-medium uppercase">{selectedNode.parent ? `Ancestor: ${selectedNode.parent}` : 'Origin Project'}</p></div>
-                                <div className="bg-white p-4 rounded-3xl shadow-2xl w-24 h-24 flex items-center justify-center overflow-hidden">
-                                    <img src={getLogoUrl(selectedNode)} alt="" className="w-20 h-20 object-contain z-10" onError={(e) => { (e.target as HTMLImageElement).src = 'https://distrowatch.com/images/y9go/linux.png'; }} />
-                                    {selectedNode.popularity && <div className="absolute top-0 right-0 bg-yellow-400 text-slate-900 text-[8px] font-black px-2 py-1 rounded-bl-xl z-20">#{selectedNode.popularity}</div>}
+                                <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h2 className="text-2xl font-black text-white leading-tight">{selectedNode.name}</h2>
+                                        {selectedNode.popularity && (
+                                            <span className="text-[11px] font-black bg-yellow-400 text-slate-900 rounded-lg px-2 py-0.5 whitespace-nowrap">
+                                                #{selectedNode.popularity} popularity
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-slate-400 font-medium uppercase mt-1">{selectedNode.parent ? `Ancestor: ${selectedNode.parent}` : 'Origin Project'}</p>
+                                    {ancestryPath.length > 1 && (
+                                        <div className="flex flex-wrap items-center gap-1 mt-2">
+                                            {ancestryPath.map((name, i) => (
+                                                <span key={name} className="flex items-center gap-1 text-[10px]">
+                                                    {i > 0 && <span className="text-slate-700">›</span>}
+                                                    <span className={i === ancestryPath.length - 1 ? 'text-cyan-400 font-bold' : 'text-slate-500'}>{name}</span>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="bg-white p-4 rounded-3xl shadow-2xl w-24 h-24 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                    <img src={getLogoUrl(selectedNode)} alt="" className="w-20 h-20 object-contain z-10" onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = getFallbackLogoUrl(selectedNode); }} />
                                 </div>
                             </div>
                             <div className="space-y-6 mb-8">
@@ -326,6 +730,35 @@ const FamilyTree: React.FC = () => {
                             <a href={`https://distrowatch.com/table.php?distribution=${selectedNode.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-4 bg-cyan-500 hover:bg-cyan-400 text-white rounded-2xl font-black text-xs tracking-widest transition-all shadow-lg shadow-cyan-500/25">VIEW ON DISTROWATCH <Info className="w-4 h-4" /></a>
                         </div>
                     </motion.div>
+                )}
+            </AnimatePresence>
+            {hoverInfo && (
+                <div
+                    className="fixed z-50 pointer-events-none bg-slate-900/95 border border-slate-700/50 rounded-lg px-3 py-2 shadow-xl"
+                    style={{ left: hoverInfo.x + 14, top: hoverInfo.y - 40 }}
+                >
+                    <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-white">{hoverInfo.node.name}</p>
+                        {hoverInfo.node.popularity && (
+                            <span className="text-[10px] font-black bg-yellow-400 text-slate-900 rounded px-1.5 py-0.5">#{hoverInfo.node.popularity}</span>
+                        )}
+                    </div>
+                    <p className="text-xs text-slate-400">{hoverInfo.node.start?.slice(0, 4) ?? '?'}{hoverInfo.node.stop ? ` – ${hoverInfo.node.stop.slice(0, 4)}` : ' – present'}</p>
+                </div>
+            )}
+            <AnimatePresence>
+                {showVideoModal && (
+                    <VideoExportModal
+                        svgRef={svgRef}
+                        canvasRef={cinematicCanvasRef}
+                        onYearChange={setTimelineYear}
+                        fitAll={fitAll}
+                        getCinematicTransform={getCinematicTransform}
+                        applyCinematicCamera={applyCinematicCamera}
+                        minYear={1991}
+                        maxYear={currentYear}
+                        onClose={() => setShowVideoModal(false)}
+                    />
                 )}
             </AnimatePresence>
         </div>

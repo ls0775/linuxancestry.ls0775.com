@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ExternalLink, Calendar, Search, Maximize2, X } from 'lucide-react';
+import { ExternalLink, Calendar, Search, Maximize2, X, Download } from 'lucide-react';
 import TimelineControls from './TimelineControls';
 import { useDistroData, type DistroNode } from '../hooks/useDistroData';
 
@@ -14,12 +15,15 @@ const RadialTree: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [showAll, setShowAll] = useState(false);
-    
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [hoverInfo, setHoverInfo] = useState<{ node: DistroNode; x: number; y: number } | null>(null);
+    const prevHighlightIdRef = useRef<string | null>(null);
+
     const currentYear = new Date().getFullYear();
     const [timelineYear, setTimelineYear] = useState(currentYear);
 
-    const getLogoUrl = (node: DistroNode) => {
-        if (node.logo) return node.logo;
+    const getLogoUrl = (node: DistroNode) => `/logos/${node.id}.png`;
+    const getFallbackLogoUrl = (node: DistroNode) => {
         if (node.icon) return node.icon;
         const slug = node.id.toLowerCase().replace(/[^a-z0-9]/g, '');
         return `https://distrowatch.com/images/y9go/${slug}.png`;
@@ -50,6 +54,33 @@ const RadialTree: React.FC = () => {
         const search = searchTerm.trim().toLowerCase();
         return distroData.find(d => d.name.toLowerCase() === search || d.id.toLowerCase() === search) || null;
     }, [selectedNode, searchTerm, distroData]);
+
+    const suggestions = useMemo(() => {
+        if (searchTerm.trim().length < 2) return [];
+        const s = searchTerm.trim().toLowerCase();
+        return distroData
+            .filter(d => d.name.toLowerCase().includes(s))
+            .sort((a, b) => {
+                const ap = a.name.toLowerCase().startsWith(s);
+                const bp = b.name.toLowerCase().startsWith(s);
+                if (ap && !bp) return -1;
+                if (!ap && bp) return 1;
+                return a.name.localeCompare(b.name);
+            })
+            .slice(0, 8);
+    }, [searchTerm, distroData]);
+
+    const ancestryPath = useMemo(() => {
+        if (!selectedNode) return [] as string[];
+        const idMap = new Map(distroData.map(d => [d.id, d]));
+        const path: string[] = [];
+        let curr: DistroNode | undefined = selectedNode;
+        while (curr && path.length < 8) {
+            path.unshift(curr.name);
+            curr = curr.parent ? idMap.get(curr.parent) : undefined;
+        }
+        return path;
+    }, [selectedNode, distroData]);
 
     // Calculate ecosystem statistics (Filter-aware & Search-aware)
     const stats = useMemo(() => {
@@ -85,6 +116,19 @@ const RadialTree: React.FC = () => {
             selectedName: activeHighlightNode?.name
         };
     }, [distroData, timelineYear, activeHighlightNode, getYear, showAll]);
+
+    // D3 Persistence
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setSelectedNode(null);
+                setSearchTerm('');
+                setShowSuggestions(false);
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, []);
 
     // D3 Persistence
     const zoomRef = useRef<any>(null);
@@ -126,11 +170,21 @@ const RadialTree: React.FC = () => {
             const gLink = gZoom.append("g").attr("fill", "none");
             const gNode = gZoom.append("g").attr("cursor", "pointer").attr("pointer-events", "all");
 
-            const zoom = d3.zoom().scaleExtent([0.01, 4]).on("zoom", (event) => gZoom.attr("transform", event.transform));
+            const zoom = d3.zoom().scaleExtent([0.01, 4]).on("zoom", (event) => {
+                const k = event.transform.k;
+                gZoom.attr("transform", event.transform);
+                gZoom.selectAll('text.node-label')
+                    .style('font-size', (10 / k) + 'px')
+                    .style('display', (k >= 0.15 ? null : 'none') as any);
+                gZoom.selectAll('text.year-label')
+                    .style('font-size', (10 / k) + 'px');
+            });
             zoomRef.current = zoom;
             svg.call(zoom as any);
 
-            svg.call(zoom.transform as any, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.1));
+            const initR = 5000 / 2;
+            const initScale = Math.min((width - 80) / (initR * 2), (height - 80) / (initR * 2));
+            svg.call(zoom.transform as any, d3.zoomIdentity.translate(width / 2, height / 2).scale(initScale));
 
             const treeLayout = d3.tree<DistroNode>().separation((a, b) => (a.parent == b.parent ? 4 : 8));
             const diagonal = d3.linkRadial<any, any>().angle((d: any) => d.x).radius((d: any) => d.y);
@@ -183,7 +237,7 @@ const RadialTree: React.FC = () => {
 
         const linuxRootNode: DistroNode = { id: "Linux_Original", name: "Linux", parent: null, isVirtual: false, start: "1991-09-17" };
         const nodeIds = new Set(filteredData.map((d) => d.id));
-        let dataForStratify = [
+        const dataForStratify = [
             linuxRootNode,
             ...filteredData.map((d) => ({
                 ...d,
@@ -195,7 +249,7 @@ const RadialTree: React.FC = () => {
         const stratify = d3.stratify<DistroNode>().id(d => d.id).parentId(d => (d.id === 'Linux_Original') ? null : (d.parent && currentVisibleIds.has(d.parent) ? d.parent : 'Linux_Original'));
 
         let root: d3.HierarchyNode<DistroNode>;
-        try { root = stratify(dataForStratify); } catch (e) { return; }
+        try { root = stratify(dataForStratify); } catch { return; }
 
         treeLayout.size([2 * Math.PI, currentRadius]);
         treeLayout(root);
@@ -239,10 +293,36 @@ const RadialTree: React.FC = () => {
         const nodeEnter = nodeSelection.enter().append("g").attr("class", "node-group")
             .attr("transform", (d: any) => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0)`)
             .attr("fill-opacity", 0)
-            .on("click", (event: any, d: any) => { setSelectedNode(d.data); event.stopPropagation(); });
+            .on("click", (event: any, d: any) => {
+                setSelectedNode(d.data);
+                event.stopPropagation();
+                if (svgRef.current && containerRef.current && zoomRef.current) {
+                    const w = containerRef.current.clientWidth;
+                    const h = containerRef.current.clientHeight;
+                    const currentK = d3.zoomTransform(svgRef.current).k;
+                    const k = Math.max(currentK, 0.3);
+                    // Convert radial coords to Cartesian
+                    const cx = d.y * Math.cos(d.x - Math.PI / 2);
+                    const cy = d.y * Math.sin(d.x - Math.PI / 2);
+                    d3.select(svgRef.current).transition().duration(600).call(
+                        zoomRef.current.transform,
+                        d3.zoomIdentity.translate(w / 2 - cx * k, h / 2 - cy * k).scale(k)
+                    );
+                }
+            });
 
         nodeEnter.append('circle').attr('r', 6).attr('stroke', '#06b6d4').attr('stroke-width', 2);
-        nodeEnter.append('text').attr('dy', '0.31em').style('font-size', '10px').style('font-weight', '600');
+        nodeEnter.append('text').attr('class', 'node-label').attr('dy', '0.31em').style('font-size', '10px').style('font-weight', '600');
+
+        nodeEnter
+            .on('mouseenter', (event: any, d: any) => {
+                if (d.data.id === 'Linux_Original') return;
+                setHoverInfo({ node: d.data, x: event.clientX, y: event.clientY });
+            })
+            .on('mousemove', (event: any) => {
+                setHoverInfo(prev => prev ? { ...prev, x: event.clientX, y: event.clientY } : null);
+            })
+            .on('mouseleave', () => setHoverInfo(null));
 
         const nodeUpdate = nodeSelection.merge(nodeEnter as any).transition().duration(duration)
             .attr("transform", (d: any) => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0)`)
@@ -267,12 +347,81 @@ const RadialTree: React.FC = () => {
             .attr("fill", (d: any) => activeHighlightNode && relatedIds.has(d.id) ? "#facc15" : "#cbd5e1")
             .text((d: any) => d.data.name);
 
+        // Auto-pan when highlight changes
+        const newHighlightId = activeHighlightNode?.id ?? null;
+        if (newHighlightId && newHighlightId !== prevHighlightIdRef.current) {
+            const target = root.descendants().find((d: any) => d.data.id === newHighlightId) as any;
+            if (target && svgRef.current && containerRef.current && zoomRef.current) {
+                const w = containerRef.current.clientWidth;
+                const h = containerRef.current.clientHeight;
+                const scale = 0.4;
+                const cx = target.y * Math.cos(target.x - Math.PI / 2);
+                const cy = target.y * Math.sin(target.x - Math.PI / 2);
+                d3.select(svgRef.current).transition().duration(750).call(
+                    zoomRef.current.transform,
+                    d3.zoomIdentity.translate(w / 2 - cx * scale, h / 2 - cy * scale).scale(scale)
+                );
+            }
+        }
+        prevHighlightIdRef.current = newHighlightId;
+
     }, [distroData, searchTerm, selectedNode, showAll, getYear, parseDate, timelineYear, currentYear, activeHighlightNode]);
 
     const handleResetZoom = () => {
         if (!svgRef.current || !containerRef.current || !zoomRef.current) return;
-        d3.select(svgRef.current).transition().duration(750).call(zoomRef.current.transform, d3.zoomIdentity.translate(containerRef.current!.clientWidth / 2, containerRef.current!.clientHeight / 2).scale(0.1));
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        const r = 5000 / 2;
+        const scale = Math.min((w - 80) / (r * 2), (h - 80) / (r * 2));
+        d3.select(svgRef.current).transition().duration(750).call(
+            zoomRef.current.transform,
+            d3.zoomIdentity.translate(w / 2, h / 2).scale(scale)
+        );
     };
+
+    const exportImage = useCallback(() => {
+        if (!svgRef.current || !groupsRef.current) return;
+        const isFiltered = !!(searchTerm.trim() && activeHighlightNode);
+        const r = groupsRef.current.radius;
+        const PAD = 200;
+        const vx = -r - PAD; const vy = -r - PAD;
+        const vw = (r + PAD) * 2; const vh = (r + PAD) * 2;
+        const TARGET_W = 3520;
+        const es = TARGET_W / vw;
+        const svgClone = svgRef.current.cloneNode(true) as SVGSVGElement;
+        svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        svgClone.setAttribute('width', String(TARGET_W));
+        svgClone.setAttribute('height', String(Math.round(vh * es)));
+        svgClone.setAttribute('viewBox', `${vx} ${vy} ${vw} ${vh}`);
+        const gZoomEl = svgClone.querySelector('g');
+        if (gZoomEl) {
+            gZoomEl.setAttribute('transform', `translate(${Math.round(vw / 2)},${Math.round(vh / 2)})`);
+        }
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bg.setAttribute('x', String(vx)); bg.setAttribute('y', String(vy));
+        bg.setAttribute('width', String(vw)); bg.setAttribute('height', String(vh));
+        bg.setAttribute('fill', '#0f172a');
+        svgClone.insertBefore(bg, svgClone.firstChild);
+        const fsCSS = (px: number) => `${Math.round(px / es)}px`;
+        svgClone.querySelectorAll('text.node-label').forEach(el => {
+            (el as SVGElement).style.fontSize = fsCSS(10);
+            (el as SVGElement).style.display = '';
+            (el as SVGElement).setAttribute('font-family', 'system-ui, sans-serif');
+        });
+        svgClone.querySelectorAll('text.year-label').forEach(el => {
+            (el as SVGElement).style.fontSize = fsCSS(12);
+            (el as SVGElement).setAttribute('font-family', 'system-ui, sans-serif');
+        });
+        const xml = new XMLSerializer().serializeToString(svgClone);
+        const blob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n', xml], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const slug = isFiltered ? activeHighlightNode!.name.toLowerCase().replace(/\s+/g, '-') : 'radial-full';
+        a.download = `linux-ancestry-${slug}.svg`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, [searchTerm, activeHighlightNode]);
 
     const handleReset = () => {
         setSearchTerm('');
@@ -291,10 +440,27 @@ const RadialTree: React.FC = () => {
                     <div className="relative group w-96">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-cyan-500 transition-colors" />
                         <input
-                            type="text" placeholder="Research distribution origins..."
+                            type="text" placeholder="Search distributions..."
                             className="w-full bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl py-4.5 pl-14 pr-14 text-sm focus:outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 transition-all text-white shadow-2xl"
-                            value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                            value={searchTerm}
+                            onChange={(e) => { setSearchTerm(e.target.value); setShowSuggestions(true); }}
+                            onFocus={() => setShowSuggestions(true)}
+                            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                         />
+                        {showSuggestions && suggestions.length > 0 && (
+                            <div className="absolute top-full left-0 mt-1 w-full bg-slate-900 border border-slate-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
+                                {suggestions.map(s => (
+                                    <button
+                                        key={s.id}
+                                        onMouseDown={() => { setSearchTerm(s.name); setShowSuggestions(false); }}
+                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-700/60 flex items-center justify-between gap-2"
+                                    >
+                                        <span className="truncate">{s.name}</span>
+                                        <span className="text-xs text-slate-500 shrink-0">{s.start?.slice(0, 4)}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         {(searchTerm || selectedNode) && (
                             <button onClick={() => { setSearchTerm(''); setSelectedNode(null); }} className="absolute right-4 top-1/2 -translate-y-1/2 bg-rose-500 p-2 rounded-xl text-white hover:bg-rose-400 shadow-lg">
                                 <X className="w-4 h-4" />
@@ -302,7 +468,7 @@ const RadialTree: React.FC = () => {
                         )}
                     </div>
                     <div className="flex bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl p-1.5 shadow-2xl">
-                        <button onClick={() => setShowAll(false)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${!showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>ACTIVE ONLY</button>
+                        <button onClick={() => setShowAll(false)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${!showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{`ACTIVE ${timelineYear}`}</button>
                         <button onClick={() => setShowAll(true)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>SHOW ALL</button>
                         <button onClick={handleReset} className="px-6 py-3 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-500/10 transition-all border-l border-slate-700/50">RESET</button>
                     </div>
@@ -312,9 +478,14 @@ const RadialTree: React.FC = () => {
                 </div>
             </div>
             <div className="absolute top-8 right-8 z-20">
-                <button onClick={handleResetZoom} className="p-4 bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl text-slate-400 hover:text-white transition-all shadow-2xl">
-                    <Maximize2 className="w-6 h-6" />
-                </button>
+                <div className="flex flex-col gap-2">
+                    <button onClick={handleResetZoom} className="p-4 bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl text-slate-400 hover:text-white transition-all shadow-2xl">
+                        <Maximize2 className="w-6 h-6" />
+                    </button>
+                    <button onClick={exportImage} title="Export SVG" className="p-4 bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl text-slate-400 hover:text-cyan-400 transition-all shadow-2xl">
+                        <Download className="w-6 h-6" />
+                    </button>
+                </div>
             </div>
             <svg ref={svgRef} className="w-full h-full" />
             <AnimatePresence>
@@ -325,9 +496,19 @@ const RadialTree: React.FC = () => {
                             <div className="flex-1">
                                 <h2 className="text-4xl font-black text-white leading-[0.9] mb-4">{selectedNode.name}</h2>
                                 <p className="text-[10px] text-cyan-400 font-black tracking-[0.3em] uppercase opacity-70">{selectedNode.parent ? `Ancestor: ${selectedNode.parent}` : 'Origin Project'}</p>
+                                {ancestryPath.length > 1 && (
+                                    <div className="flex flex-wrap items-center gap-1 mt-2">
+                                        {ancestryPath.map((name, i) => (
+                                            <span key={name} className="flex items-center gap-1 text-[10px]">
+                                                {i > 0 && <span className="text-slate-700">›</span>}
+                                                <span className={i === ancestryPath.length - 1 ? 'text-cyan-400 font-bold' : 'text-slate-500'}>{name}</span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                             <div className="bg-white p-4 rounded-3xl shadow-2xl flex items-center justify-center w-24 h-24 relative overflow-hidden">
-                                <img src={getLogoUrl(selectedNode)} alt="" className="w-20 h-20 object-contain z-10" onError={(e) => { (e.target as HTMLImageElement).src = 'https://distrowatch.com/images/y9go/linux.png'; }} />
+                                <img src={getLogoUrl(selectedNode)} alt="" className="w-20 h-20 object-contain z-10" onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = getFallbackLogoUrl(selectedNode); }} />
                                 {selectedNode.popularity && <div className="absolute top-0 right-0 bg-yellow-400 text-slate-900 text-[8px] font-black px-2 py-1 rounded-bl-xl z-20 shadow-sm">#{selectedNode.popularity}</div>}
                             </div>
                         </div>
@@ -350,6 +531,15 @@ const RadialTree: React.FC = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
+            {hoverInfo && (
+                <div
+                    className="fixed z-50 pointer-events-none bg-slate-900/95 border border-slate-700/50 rounded-lg px-3 py-2 shadow-xl"
+                    style={{ left: hoverInfo.x + 14, top: hoverInfo.y - 40 }}
+                >
+                    <p className="text-sm font-bold text-white">{hoverInfo.node.name}</p>
+                    <p className="text-xs text-slate-400">{hoverInfo.node.start?.slice(0, 4) ?? '?'}{hoverInfo.node.stop ? ` – ${hoverInfo.node.stop.slice(0, 4)}` : ' – present'}</p>
+                </div>
+            )}
         </div>
     );
 };

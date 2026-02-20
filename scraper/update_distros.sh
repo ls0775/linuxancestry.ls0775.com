@@ -64,12 +64,26 @@ echo ""
 
 python3 transform_data.py \
     --input distros_raw.json \
-    --output ../src/data/distros.json \
+    --output ../public/distros.json \
     --merge
 
+# Step 3: Download distro logos
+echo ""
+echo "Step 3: Downloading distro logos to public/logos/..."
+echo ""
+
+python3 download_logos.py
+
+# Step 4: Fetch popularity rankings (Last 3 months from DistroWatch)
+echo ""
+echo "Step 4: Fetching popularity rankings from DistroWatch..."
+echo ""
+
+python3 fetch_popularity.py
+
 # Verify output
-if [ -f "../src/data/distros.json" ]; then
-    DISTRO_COUNT=$(python3 -c "import json; data = json.load(open('../src/data/distros.json')); print(len(data))")
+if [ -f "../public/distros.json" ]; then
+    DISTRO_COUNT=$(python3 -c "import json; data = json.load(open('../public/distros.json')); print(len(data))")
     echo ""
     echo "======================================"
     echo "✓ Success!"
@@ -77,9 +91,9 @@ if [ -f "../src/data/distros.json" ]; then
     echo "Updated distros.json with $DISTRO_COUNT distributions"
     echo ""
     echo 'Next steps:'
-    echo '  1. Review the changes: git diff ../src/data/distros.json'
+    echo '  1. Review the changes: git diff ../public/distros.json'
     echo '  2. Test the app: cd .. && npm run dev'
-    echo "  3. Commit if satisfied: git add ../src/data/distros.json && git commit -m 'Update distros data'"
+    echo "  3. Commit if satisfied: git add ../public/distros.json ../public/logos/ && git commit -m 'Update distros data'"
 else
     echo "Error: Failed to generate distros.json"
     exit 1

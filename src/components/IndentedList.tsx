@@ -49,7 +49,7 @@ const IndentedList: React.FC = () => {
 
     const treeData = useMemo(() => {
         const now = new Date();
-        let filteredData = distroData.filter(d => {
+        const filteredData = distroData.filter(d => {
             if (!showAll && d.stop && parseDate(d.stop) < now) return false;
             if (searchTerm) {
                 return d.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -115,7 +115,7 @@ const IndentedList: React.FC = () => {
             myColor = colorScale(node.id);
         }
 
-        let displayColor = node.stop ? '#ef4444' : (hasChildren ? (myColor || '#06b6d4') : '#94a3b8');
+        const displayColor = node.stop ? '#ef4444' : (hasChildren ? (myColor || '#06b6d4') : '#94a3b8');
 
         return (
             <div key={node.id}>

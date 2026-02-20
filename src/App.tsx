@@ -6,7 +6,7 @@ const FamilyTree = lazy(() => import('./components/FamilyTree'));
 const RadialTree = lazy(() => import('./components/RadialTree'));
 
 function App() {
-  const [viewMode, setViewMode] = useState<'tree' | 'radial'>('radial');
+  const [viewMode, setViewMode] = useState<'tree' | 'radial'>('tree');
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 selection:bg-cyan-500/30">
