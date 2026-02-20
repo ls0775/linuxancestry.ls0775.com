@@ -338,7 +338,6 @@ const FamilyTree: React.FC = () => {
                             const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
                             return ((rank <= 100 ? 16 : 9) / k) + 'px';
                         })
-                        .attr('dy', Math.max(56, 20 / k))
                         .style('display', function(d: any) {
                             const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
                             return (rank <= 100 ? k >= 0.05 : k >= 0.12) ? null : 'none';
@@ -522,8 +521,7 @@ const FamilyTree: React.FC = () => {
             .attr('clip-path', (d: any) => `url(#logo-clip-${d.data.id})`)
             .style('display', 'none')
             .style('pointer-events', 'none');
-        nodeEnter.append('text').attr('text-anchor', 'middle').attr('fill', '#e2e8f0').style('pointer-events', 'none')
-            .attr('dy', Math.max(56, 20 / currentK));
+        nodeEnter.append('text').attr('text-anchor', 'start').attr('dominant-baseline', 'middle').attr('x', 52).attr('fill', '#e2e8f0').style('pointer-events', 'none');
 
         // Assign single class to all node labels
         nodeSelection.merge(nodeEnter as any).select('text')
@@ -590,8 +588,7 @@ const FamilyTree: React.FC = () => {
             .style('font-size', function(d: any) {
                 const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
                 return ((rank <= 100 ? 16 : 9) / currentK) + 'px';
-            })
-            .attr('dy', Math.max(56, 20 / currentK));
+            });
 
         // Sync logo visibility with current zoom
         gNode.selectAll('.node-logo, .node-logo-bg')
