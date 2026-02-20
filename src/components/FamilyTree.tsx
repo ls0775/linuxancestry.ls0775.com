@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
-import { Search, Info, X, Maximize2, Download, Video } from 'lucide-react';
+import { Search, Info, X, Maximize2, Download } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import TimelineControls from './TimelineControls';
-import VideoExportModal from './VideoExportModal';
 import { useDistroData, type DistroNode } from '../hooks/useDistroData';
 import {
     parseDate, getYear, getLogoUrl, getFallbackLogoUrl,
@@ -26,7 +25,6 @@ const FamilyTree: React.FC = () => {
     const [showAll, setShowAll] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [hoverInfo, setHoverInfo] = useState<{ node: DistroNode; x: number; y: number } | null>(null);
-    const [showVideoModal, setShowVideoModal] = useState(false);
     const prevHighlightIdRef = useRef<string | null>(null);
 
     const currentYear = new Date().getFullYear();
@@ -155,31 +153,6 @@ const FamilyTree: React.FC = () => {
             zoomRef.current.transform,
             d3.zoomIdentity.translate(tx, ty).scale(scale)
         );
-    }, []);
-
-    // Hidden canvas for video recording
-    const cinematicCanvasRef = useRef<HTMLCanvasElement>(null);
-
-    /** Compute D3 zoom transform that centres a given year at ~35% from left, logos visible (k=0.45) */
-    const getCinematicTransform = useCallback((year: number) => {
-        if (!groupsRef.current || !containerRef.current) return null;
-        const { xScale } = groupsRef.current;
-        const w = containerRef.current.clientWidth;
-        const h = containerRef.current.clientHeight;
-        const k = 0.45;
-        const tx = w * 0.35 - xScale(year) * k;
-        const ty = h * 0.5 - (CHART_HEIGHT / 2) * k;
-        return { x: tx, y: ty, k };
-    }, []);
-
-    /** Smoothly move the camera to a precomputed transform */
-    const applyCinematicCamera = useCallback((t: { x: number; y: number; k: number }, durationMs: number) => {
-        if (!svgRef.current || !zoomRef.current) return;
-        d3.select(svgRef.current)
-            .transition()
-            .duration(durationMs)
-            .ease(d3.easeCubicInOut)
-            .call(zoomRef.current.transform, d3.zoomIdentity.translate(t.x, t.y).scale(t.k));
     }, []);
 
     const handleReset = () => {
@@ -690,17 +663,12 @@ const FamilyTree: React.FC = () => {
                 <div className="w-[30rem]"><TimelineControls minYear={1991} maxYear={currentYear} currentYear={timelineYear} onYearChange={setTimelineYear} stats={stats} /></div>
             </div>
             <svg ref={svgRef} className="w-full h-full" />
-            {/* Hidden canvas used by video recorder */}
-            <canvas ref={cinematicCanvasRef} style={{ display: 'none' }} />
             <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
                 <button onClick={fitAll} title="Fit all" className="p-3 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-slate-400 hover:text-white transition-all shadow-lg">
                     <Maximize2 className="w-5 h-5" />
                 </button>
                 <button onClick={exportImage} title="Export SVG" className="p-3 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-slate-400 hover:text-cyan-400 transition-all shadow-lg">
                     <Download className="w-5 h-5" />
-                </button>
-                <button onClick={() => setShowVideoModal(true)} title="Export Video" className="p-3 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-slate-400 hover:text-rose-400 transition-all shadow-lg">
-                    <Video className="w-5 h-5" />
                 </button>
             </div>
             <AnimatePresence>
@@ -731,21 +699,6 @@ const FamilyTree: React.FC = () => {
                 )}
             </AnimatePresence>
             {hoverInfo && <HoverTooltip node={hoverInfo.node} x={hoverInfo.x} y={hoverInfo.y} />}
-            <AnimatePresence>
-                {showVideoModal && (
-                    <VideoExportModal
-                        svgRef={svgRef}
-                        canvasRef={cinematicCanvasRef}
-                        onYearChange={setTimelineYear}
-                        fitAll={fitAll}
-                        getCinematicTransform={getCinematicTransform}
-                        applyCinematicCamera={applyCinematicCamera}
-                        minYear={1991}
-                        maxYear={currentYear}
-                        onClose={() => setShowVideoModal(false)}
-                    />
-                )}
-            </AnimatePresence>
         </div>
     );
 };
