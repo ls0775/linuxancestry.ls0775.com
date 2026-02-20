@@ -242,23 +242,7 @@ const FamilyTree: React.FC = () => {
 
         // Font in SVG units = desired screen px / export scale
         const labelFontSVG = Math.round(DESIRED_FONT_PX / es);
-        const yearFontSVG  = Math.round(14 / es);
-        const yearMinorSVG = Math.round(10 / es);
         const CIRCLE_R = 24;
-
-        // Year labels: fixed SVG-unit sizes, always show major; minor only for filtered
-        svgClone.querySelectorAll('.year-label-major').forEach(el => {
-            const s = el as SVGElement;
-            s.style.fontSize = `${yearFontSVG}px`;
-            s.style.display = '';
-            s.setAttribute('font-family', 'system-ui, sans-serif');
-        });
-        svgClone.querySelectorAll('.year-label-minor').forEach(el => {
-            const s = el as SVGElement;
-            s.style.fontSize = `${yearMinorSVG}px`;
-            s.style.display = isFiltered ? '' : 'none';
-            s.setAttribute('font-family', 'system-ui, sans-serif');
-        });
 
         // All node labels: anchor to the RIGHT of the circle so vertical overlap
         // is impossible (each node has a unique y in the tidy tree layout).
@@ -356,10 +340,6 @@ const FamilyTree: React.FC = () => {
                     const k = event.transform.k;
                     gZoom.attr('transform', event.transform);
                     updateStickyAxis(event.transform);
-                    gZoom.selectAll('.year-label-major').style('font-size', (24 / k) + 'px');
-                    gZoom.selectAll('.year-label-minor')
-                        .style('font-size', (14 / k) + 'px')
-                        .style('display', (k >= 0.3 ? null : 'none') as any);
                     gZoom.selectAll('.node-label')
                         .style('font-size', function(d: any) {
                             const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
@@ -408,27 +388,8 @@ const FamilyTree: React.FC = () => {
             .attr('x1', (d: any) => xScale(d)).attr('x2', (d: any) => xScale(d))
             .attr('y1', -200).attr('y2', CHART_HEIGHT + 200);
 
-        const gridLabels = gGrid.selectAll('text').data(yearsToDraw.flatMap(y => [{ y, pos: 'top' }, { y, pos: 'bottom' }]));
-        gridLabels.enter().append('text')
-            .attr('class', (d: any) => d.y % 5 === 0 ? 'year-label-major' : 'year-label-minor')
-            .attr('text-anchor', 'middle').attr('fill', '#64748b')
-            .style('font-weight', (d: any) => d.y % 5 === 0 ? '900' : '500')
-            .merge(gridLabels as any)
-            .attr('x', (d: any) => xScale(d.y))
-            .attr('y', (d: any) => {
-                const base = d.pos === 'top' ? -40 : CHART_HEIGHT + 100;
-                const offset = d.y % 5 === 0 ? (d.pos === 'top' ? -60 : 60) : 0;
-                return base + offset;
-            })
-            .style('font-size', (d: any) => d.y % 5 === 0 ? '24px' : '14px')
-            .style('display', (d: any) => d.y % 5 === 0 ? null : 'none')
-            .text((d: any) => d.y);
-
         // Sync minor label visibility with current zoom (handles re-renders mid-zoom)
         const currentK = d3.zoomTransform(svgRef.current!).k;
-        if (currentK >= 0.3) {
-            gGrid.selectAll('.year-label-minor').style('display', null);
-        }
 
         // Data Filtering
         let filteredData = distroData.filter((d) => {
