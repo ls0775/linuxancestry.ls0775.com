@@ -154,8 +154,18 @@ const RadialTree: React.FC = () => {
                 const k = event.transform.k;
                 gZoom.attr("transform", event.transform);
                 gZoom.selectAll('text.node-label')
-                    .style('font-size', (10 / k) + 'px')
-                    .style('display', (k >= 0.15 ? null : 'none') as any);
+                    .style('font-size', function(d: any) {
+                        const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                        return ((rank <= 100 ? 16 : 9) / k) + 'px';
+                    })
+                    .style('font-weight', function(d: any) {
+                        const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                        return rank <= 100 ? '900' : '600';
+                    })
+                    .style('display', function(d: any) {
+                        const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                        return (rank <= 100 ? k >= 0.05 : k >= 0.15) ? null : 'none';
+                    } as any);
                 gZoom.selectAll('text.year-label')
                     .style('font-size', (10 / k) + 'px');
             });
@@ -292,7 +302,7 @@ const RadialTree: React.FC = () => {
             });
 
         nodeEnter.append('circle').attr('r', 6).attr('stroke', '#06b6d4').attr('stroke-width', 2);
-        nodeEnter.append('text').attr('class', 'node-label').attr('dy', '0.31em').style('font-size', '10px').style('font-weight', '600');
+        nodeEnter.append('text').attr('class', 'node-label').attr('dy', '0.31em').style('font-size', '10px');
 
         nodeEnter
             .on('mouseenter', (event: any, d: any) => {
@@ -324,8 +334,32 @@ const RadialTree: React.FC = () => {
             .attr("x", (d: any) => d.x >= Math.PI ? -8 : 8)
             .attr("text-anchor", (d: any) => d.x >= Math.PI ? "end" : "start")
             .style("paint-order", "stroke").style("stroke", "#0f172a").style("stroke-width", "3px")
+            .style("font-weight", (d: any) => {
+                const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                return rank <= 100 ? '900' : '600';
+            })
             .attr("fill", (d: any) => activeHighlightNode && relatedIds.has(d.id) ? "#facc15" : "#cbd5e1")
             .text((d: any) => d.data.name);
+
+        // Sync label font-size/weight/visibility with current zoom on each render
+        const currentK = (() => {
+            if (!svgRef.current) return 1;
+            const t = d3.zoomTransform(svgRef.current as any);
+            return t.k;
+        })();
+        gNode.selectAll('text.node-label')
+            .style('font-size', function(d: any) {
+                const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                return ((rank <= 100 ? 16 : 9) / currentK) + 'px';
+            })
+            .style('font-weight', function(d: any) {
+                const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                return rank <= 100 ? '900' : '600';
+            })
+            .style('display', function(d: any) {
+                const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                return (rank <= 100 ? currentK >= 0.05 : currentK >= 0.15) ? null : 'none';
+            } as any);
 
         // Auto-pan when highlight changes
         const newHighlightId = activeHighlightNode?.id ?? null;
