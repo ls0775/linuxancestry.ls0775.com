@@ -335,11 +335,11 @@ const FamilyTree: React.FC = () => {
                         .style('display', (k >= 0.3 ? null : 'none') as any);
                     gZoom.selectAll('.node-label')
                         .style('font-size', function(d: any) {
-                            const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                            const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
                             return ((rank <= 100 ? 16 : 9) / k) + 'px';
                         })
                         .style('display', function(d: any) {
-                            const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                            const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
                             return (rank <= 100 ? true : k >= 0.12) ? null : 'none';
                         } as any);
                     gZoom.selectAll('.node-logo, .node-logo-bg')
@@ -365,8 +365,8 @@ const FamilyTree: React.FC = () => {
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
         const search = searchTerm.trim().toLowerCase();
 
-        // Popularity rank helper (wraps shared util for D3 datum shape)
-        const getRank = (d: any): number => getPopularityRank(d?.data ?? {});
+        // Popularity rank helper — Linux_Original is rank 0 (always primary)
+        const getRank = (d: any): number => d?.data?.id === 'Linux_Original' ? 0 : getPopularityRank(d?.data ?? {});
 
         // Grid Update
         const yearsToDraw = d3.range(1991, 2027, 1);
@@ -545,7 +545,10 @@ const FamilyTree: React.FC = () => {
 
         nodeUpdate.select('text')
             .attr('font-weight', (d: any) => getRank(d) <= 100 ? '900' : '500')
-            .attr('fill', (d: any) => activeHighlightNode && relatedIds.has(d.data.id) ? '#facc15' : '#e2e8f0')
+            .attr('fill', (d: any) => {
+                if (d.data.id === 'Linux_Original') return '#ffffff';
+                return activeHighlightNode && relatedIds.has(d.data.id) ? '#facc15' : '#e2e8f0';
+            })
             .text((d: any) => d.data.name);
 
         // Two-phase label cull:
@@ -586,11 +589,11 @@ const FamilyTree: React.FC = () => {
         // Sync node label font size with current zoom (handles re-renders mid-zoom)
         gNode.selectAll('.node-label')
             .style('font-size', function(d: any) {
-                const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
                 return ((rank <= 100 ? 16 : 9) / currentK) + 'px';
             })
             .style('font-weight', function(d: any) {
-                const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
                 return rank <= 100 ? '900' : '500';
             });
 
