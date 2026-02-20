@@ -340,7 +340,7 @@ const FamilyTree: React.FC = () => {
                         })
                         .style('display', function(d: any) {
                             const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
-                            return (rank <= 100 ? k >= 0.05 : k >= 0.12) ? null : 'none';
+                            return (rank <= 100 ? true : k >= 0.12) ? null : 'none';
                         } as any);
                     gZoom.selectAll('.node-logo, .node-logo-bg')
                         .style('display', (k >= 0.4 ? '' : 'none') as any);
@@ -560,10 +560,10 @@ const FamilyTree: React.FC = () => {
             if (textEl && d) cullCandidates.push({ svgY: d.y, el: textEl, rank: getRank(d) });
         });
 
-        if (currentK < 0.05) {
+        if (currentK < 0.005) {
             cullCandidates.forEach(({ el }) => { el.style.display = 'none'; });
         } else {
-            // Phase 1: top-100 always shown
+            // Phase 1: top-100 always shown at any zoom level
             cullCandidates.forEach(({ svgY, el, rank }) => {
                 if (rank <= PRIMARY_RANK) {
                     el.style.display = '';
@@ -588,6 +588,10 @@ const FamilyTree: React.FC = () => {
             .style('font-size', function(d: any) {
                 const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
                 return ((rank <= 100 ? 16 : 9) / currentK) + 'px';
+            })
+            .style('font-weight', function(d: any) {
+                const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
+                return rank <= 100 ? '900' : '500';
             });
 
         // Sync logo visibility with current zoom
