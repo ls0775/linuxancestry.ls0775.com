@@ -478,10 +478,50 @@ const FamilyTree: React.FC = () => {
         try { root = finalStratify(dataForStratify); } catch { return; }
 
         treeLayout(root);
+
+        // ── Family Band Layout ────────────────────────────────────────────────
+        // d3.tree assigns vertical positions (node.x) globally, causing Slackware,
+        // Debian, etc. branches to interleave. Remap each node into its own
+        // non-overlapping vertical band BEFORE the axis swap.
+        const getFamilyId = (node: any): string => {
+            let n = node;
+            while (n.parent && n.parent.data.id !== 'Linux_Original') n = n.parent;
+            return n.data.id;
+        };
+
+        // Collect vertical extent per family (using tidy-tree's node.x = vertical pos)
+        const familyExtents = new Map<string, { min: number; max: number }>();
         root.descendants().forEach((node: any) => {
-            const verticalLayoutPos = node.x;
+            if (node.data.id === 'Linux_Original') return;
+            const fid = getFamilyId(node);
+            const ext = familyExtents.get(fid) ?? { min: Infinity, max: -Infinity };
+            ext.min = Math.min(ext.min, node.x);
+            ext.max = Math.max(ext.max, node.x);
+            familyExtents.set(fid, ext);
+        });
+
+        // Sort families by their tidy-tree centroid so overall order is preserved
+        const FAMILY_GAP = 1200;
+        const sortedFamilies = [...familyExtents.entries()]
+            .sort((a, b) => (a[1].min + a[1].max) / 2 - (b[1].min + b[1].max) / 2);
+
+        let bandCursor = 0;
+        const bandMap = new Map<string, { start: number; originalMin: number }>();
+        for (const [fid, ext] of sortedFamilies) {
+            bandMap.set(fid, { start: bandCursor, originalMin: ext.min });
+            bandCursor += (ext.max - ext.min) + FAMILY_GAP;
+        }
+        const totalBandHeight = bandCursor;
+
+        // Remap node.x to banded vertical position, then do the axis swap
+        root.descendants().forEach((node: any) => {
+            if (node.data.id === 'Linux_Original') {
+                node.y = totalBandHeight / 2;
+            } else {
+                const band = bandMap.get(getFamilyId(node))!;
+                node.y = band.start + (node.x - band.originalMin);
+            }
             node.x = xScale(getYear(node.data.start));
-            node.y = verticalLayoutPos;
         });
 
         const diagonal = d3.linkHorizontal<any, any>().x(d => d.x).y(d => d.y);
