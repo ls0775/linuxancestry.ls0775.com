@@ -24,6 +24,7 @@ const FamilyTree: React.FC = () => {
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [showAll, setShowAll] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
     const [hoverInfo, setHoverInfo] = useState<{ node: DistroNode; x: number; y: number } | null>(null);
     const prevHighlightIdRef = useRef<string | null>(null);
 
@@ -652,18 +653,42 @@ const FamilyTree: React.FC = () => {
                             type="text"
                             placeholder="Search distributions..."
                             value={searchTerm}
-                            onChange={(e) => { setSearchTerm(e.target.value); setShowSuggestions(true); }}
-                            onFocus={() => setShowSuggestions(true)}
+                            onChange={(e) => {
+                                setSearchTerm(e.target.value);
+                                setShowSuggestions(true);
+                                setSelectedSuggestionIndex(-1);
+                            }}
+                            onFocus={() => { setShowSuggestions(true); setSelectedSuggestionIndex(-1); }}
                             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                            onKeyDown={(e) => {
+                                if (!showSuggestions || suggestions.length === 0) return;
+                                if (e.key === 'ArrowDown') {
+                                    e.preventDefault();
+                                    setSelectedSuggestionIndex(prev => (prev < suggestions.length - 1 ? prev + 1 : 0));
+                                } else if (e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    setSelectedSuggestionIndex(prev => (prev > 0 ? prev - 1 : suggestions.length - 1));
+                                } else if (e.key === 'Enter') {
+                                    if (selectedSuggestionIndex >= 0 && selectedSuggestionIndex < suggestions.length) {
+                                        e.preventDefault();
+                                        setSearchTerm(suggestions[selectedSuggestionIndex].name);
+                                        setShowSuggestions(false);
+                                        setSelectedSuggestionIndex(-1);
+                                    }
+                                } else if (e.key === 'Escape') {
+                                    setShowSuggestions(false);
+                                    setSelectedSuggestionIndex(-1);
+                                }
+                            }}
                             className="pl-10 pr-4 py-2 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 w-64"
                         />
                         {showSuggestions && suggestions.length > 0 && (
                             <div className="absolute top-full left-0 mt-1 w-64 bg-slate-900 border border-slate-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
-                                {suggestions.map(s => (
+                                {suggestions.map((s, idx) => (
                                     <button
                                         key={s.id}
                                         onMouseDown={() => { setSearchTerm(s.name); setShowSuggestions(false); }}
-                                        className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-slate-700/60 flex items-center justify-between gap-2"
+                                        className={`w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-slate-700/60 flex items-center justify-between gap-2 transition-colors ${idx === selectedSuggestionIndex ? 'bg-slate-700/80 text-cyan-400 font-semibold' : ''}`}
                                     >
                                         <span className="truncate">{s.name}</span>
                                         <span className="text-xs text-slate-500 shrink-0">{s.start?.slice(0, 4)}</span>

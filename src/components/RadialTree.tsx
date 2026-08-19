@@ -21,11 +21,23 @@ const RadialTree: React.FC = () => {
     const [selectedNode, setSelectedNode] = useState<DistroNode | null>(null);
     const [showAll, setShowAll] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
     const [hoverInfo, setHoverInfo] = useState<{ node: DistroNode; x: number; y: number } | null>(null);
     const prevHighlightIdRef = useRef<string | null>(null);
 
     const currentYear = new Date().getFullYear();
     const [timelineYear, setTimelineYear] = useState(currentYear);
+
+    const childrenMap = useMemo(() => {
+        const map = new Map<string, DistroNode[]>();
+        distroData.forEach(d => {
+            if (d.parent) {
+                if (!map.has(d.parent)) map.set(d.parent, []);
+                map.get(d.parent)!.push(d);
+            }
+        });
+        return map;
+    }, [distroData]);
 
     // Derived active node for lineage (either explicitly clicked or searched)
     const activeHighlightNode = useMemo(() => {
@@ -78,8 +90,15 @@ const RadialTree: React.FC = () => {
 
         let selectedChildrenCount = 0;
         if (activeHighlightNode) {
+            const filteredChildrenMap = new Map<string, DistroNode[]>();
+            filterMatched.forEach(d => {
+                if (d.parent) {
+                    if (!filteredChildrenMap.has(d.parent)) filteredChildrenMap.set(d.parent, []);
+                    filteredChildrenMap.get(d.parent)!.push(d);
+                }
+            });
             const countDescendants = (pid: string): number => {
-                const direct = filterMatched.filter(d => d.parent === pid);
+                const direct = filteredChildrenMap.get(pid) ?? [];
                 let total = direct.length;
                 direct.forEach(child => {
                     total += countDescendants(child.id);
@@ -211,7 +230,7 @@ const RadialTree: React.FC = () => {
                 curr = curr.parent ? idMap.get(curr.parent) : undefined; 
             }
             const addDescendants = (pid: string) => {
-                distroData.filter(d => d.parent === pid).forEach(child => {
+                (childrenMap.get(pid) ?? []).forEach(child => {
                     if (relatedIds.has(child.id)) return;
                     relatedIds.add(child.id);
                     addDescendants(child.id);
@@ -379,7 +398,7 @@ const RadialTree: React.FC = () => {
         }
         prevHighlightIdRef.current = newHighlightId;
 
-    }, [distroData, searchTerm, selectedNode, showAll, timelineYear, currentYear, activeHighlightNode]);
+    }, [distroData, searchTerm, selectedNode, showAll, timelineYear, currentYear, activeHighlightNode, childrenMap]);
 
     const handleResetZoom = () => {
         if (!svgRef.current || !containerRef.current || !zoomRef.current) return;
@@ -457,17 +476,41 @@ const RadialTree: React.FC = () => {
                             type="text" placeholder="Search distributions..."
                             className="w-full bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl py-4.5 pl-14 pr-14 text-sm focus:outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 transition-all text-white shadow-2xl"
                             value={searchTerm}
-                            onChange={(e) => { setSearchTerm(e.target.value); setShowSuggestions(true); }}
-                            onFocus={() => setShowSuggestions(true)}
+                            onChange={(e) => {
+                                setSearchTerm(e.target.value);
+                                setShowSuggestions(true);
+                                setSelectedSuggestionIndex(-1);
+                            }}
+                            onFocus={() => { setShowSuggestions(true); setSelectedSuggestionIndex(-1); }}
                             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                            onKeyDown={(e) => {
+                                if (!showSuggestions || suggestions.length === 0) return;
+                                if (e.key === 'ArrowDown') {
+                                    e.preventDefault();
+                                    setSelectedSuggestionIndex(prev => (prev < suggestions.length - 1 ? prev + 1 : 0));
+                                } else if (e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    setSelectedSuggestionIndex(prev => (prev > 0 ? prev - 1 : suggestions.length - 1));
+                                } else if (e.key === 'Enter') {
+                                    if (selectedSuggestionIndex >= 0 && selectedSuggestionIndex < suggestions.length) {
+                                        e.preventDefault();
+                                        setSearchTerm(suggestions[selectedSuggestionIndex].name);
+                                        setShowSuggestions(false);
+                                        setSelectedSuggestionIndex(-1);
+                                    }
+                                } else if (e.key === 'Escape') {
+                                    setShowSuggestions(false);
+                                    setSelectedSuggestionIndex(-1);
+                                }
+                            }}
                         />
                         {showSuggestions && suggestions.length > 0 && (
                             <div className="absolute top-full left-0 mt-1 w-full bg-slate-900 border border-slate-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
-                                {suggestions.map(s => (
+                                {suggestions.map((s, idx) => (
                                     <button
                                         key={s.id}
                                         onMouseDown={() => { setSearchTerm(s.name); setShowSuggestions(false); }}
-                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-700/60 flex items-center justify-between gap-2"
+                                        className={`w-full text-left px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-700/60 flex items-center justify-between gap-2 transition-colors ${idx === selectedSuggestionIndex ? 'bg-slate-700/80 text-cyan-400 font-semibold' : ''}`}
                                     >
                                         <span className="truncate">{s.name}</span>
                                         <span className="text-xs text-slate-500 shrink-0">{s.start?.slice(0, 4)}</span>

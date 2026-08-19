@@ -54,8 +54,5 @@ export function useDistroData() {
         return () => { isMounted = false; };
     }, []);
 
-    // Provide a consistently memoized empty array when loading
-    const safeData = useMemo(() => data, [data]);
-
-    return { data: safeData, isLoading, error };
+    return { data, isLoading, error };
 }
