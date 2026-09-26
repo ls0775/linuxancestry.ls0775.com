@@ -30,6 +30,9 @@ HEADERS = {
 # Base URL
 BASE_URL = "https://distrowatch.com"
 
+# DistroWatch robots.txt declares "Crawl-Delay: 15". Do not go below this.
+CRAWL_DELAY = 15.0
+
 
 def sanitize_date(date_str: str) -> str:
     """
@@ -143,7 +146,7 @@ def fetch_distribution_details(session: requests.Session, slug: str, name: str) 
     detail_url = f"{BASE_URL}/table.php?distribution={slug}"
     
     max_retries = 3
-    retry_delay = 5
+    retry_delay = 60  # throttling means back off well beyond the crawl delay
     
     for attempt in range(max_retries):
         try:
@@ -162,24 +165,11 @@ def fetch_distribution_details(session: requests.Session, slug: str, name: str) 
                 retry_delay *= 2
             else:
                 print(f"  Error: Could not fetch details for {name} after {max_retries} attempts: {e}", file=sys.stderr)
-                return {
-                    'id': slug,
-                    'name': name,
-                    'url': detail_url,
-                    'parent': None,
-                    'start': '',
-                    'stop': '',
-                    'status': 'Unknown',
-                    'based_on': '',
-                    'origin': '',
-                    'architecture': '',
-                    'desktop': '',
-                    'category': '',
-                    'description': '',
-                    'popularity': None,
-                    'logo': ''
-                }
-    
+                return None
+    else:
+        print(f"  Error: {name} still throttled after {max_retries} attempts", file=sys.stderr)
+        return None
+
     soup = BeautifulSoup(response.text, 'html.parser')
     
     # Initialize distribution data with all fields
@@ -324,14 +314,19 @@ def fetch_distribution_details(session: requests.Session, slug: str, name: str) 
     return distro_data
 
 
-def fetch_all_distributions(output_file: Optional[str] = None, use_cache: bool = True, limit: Optional[int] = None, delay: float = 1.0, repair: bool = False) -> List[Dict]:
+def fetch_all_distributions(output_file: Optional[str] = None, use_cache: bool = True, limit: Optional[int] = None, delay: float = CRAWL_DELAY, repair: bool = False) -> List[Dict]:
     """
     Main function to fetch all Linux distributions from DistroWatch
     Uses the search page with status=All to get ALL distributions (1100+)
     """
     cache_file = Path('distrowatch_cache.json')
     all_distros = []
-    if cache_file.exists():
+    if delay < CRAWL_DELAY:
+        print(f"Warning: delay {delay}s is below DistroWatch's Crawl-Delay of {CRAWL_DELAY:.0f}s; using {CRAWL_DELAY:.0f}s")
+        delay = CRAWL_DELAY
+    if not use_cache and cache_file.exists():
+        print(f"Ignoring existing cache (--no-cache): {cache_file}")
+    elif cache_file.exists():
         print(f"Detected existing cache: {cache_file}")
         try:
             with open(cache_file, 'r', encoding='utf-8') as f:
@@ -343,9 +338,6 @@ def fetch_all_distributions(output_file: Optional[str] = None, use_cache: bool =
     session = requests.Session()
     session.headers.update(HEADERS)
     
-    # Warm up delay
-    print("Cooling down before start...")
-    time.sleep(5)
     
     # Fetch the list of distributions from search page (ALL distributions)
     distro_list = fetch_search_page_distributions(session)
@@ -363,6 +355,7 @@ def fetch_all_distributions(output_file: Optional[str] = None, use_cache: bool =
     
     # Create a set of already fetched slugs for resume logic
     seen_slugs = {d['id'] for d in all_distros if 'id' in d}
+    failed: List[tuple] = []
     
     try:
         # Process each distribution
@@ -376,7 +369,7 @@ def fetch_all_distributions(output_file: Optional[str] = None, use_cache: bool =
                 existing = next((d for d in all_distros if d.get('id') == slug), None)
                 if existing:
                     # If popularity is missing or logo is missing, we re-fetch
-                    if not existing.get('popularity') or not existing.get('logo'):
+                    if existing.get('status') == 'Unknown' or not existing.get('popularity') or not existing.get('logo'):
                         print(f"[{i}/{len(distro_list)}] Repairing (incomplete data): {name}")
                         should_fetch = True
                         # Remove old record so we can replace it
@@ -395,6 +388,8 @@ def fetch_all_distributions(output_file: Optional[str] = None, use_cache: bool =
             if details:
                 all_distros.append(details)
                 seen_slugs.add(slug)
+            else:
+                failed.append((slug, name))
                 
             # Periodic save to cache (every 10 distros) to prevent full loss on crash
             if len(all_distros) % 10 == 0:
@@ -412,6 +407,11 @@ def fetch_all_distributions(output_file: Optional[str] = None, use_cache: bool =
         print(f"\n\nError during scraping: {e}")
         print("Saving current progress...")
     
+    if failed:
+        print(f"\n{len(failed)} distributions could not be fetched (re-run to retry):", file=sys.stderr)
+        for slug, name in failed:
+            print(f"  {name} ({slug})", file=sys.stderr)
+
     # Final save to cache
     print(f"Saving {len(all_distros)} records to cache: {cache_file}")
     with open(cache_file, 'w', encoding='utf-8') as f:
@@ -450,8 +450,8 @@ def main():
     parser.add_argument(
         '--delay', '-d',
         type=float,
-        default=1.5,
-        help='Delay between requests in seconds (default: 1.5)'
+        default=CRAWL_DELAY,
+        help=f'Delay between requests in seconds (default and minimum: {CRAWL_DELAY:.0f}, per robots.txt)'
     )
     parser.add_argument(
         '--repair',

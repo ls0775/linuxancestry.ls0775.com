@@ -27,14 +27,16 @@ fi
 # Step 1: Fetch data
 echo ""
 echo "Step 1: Fetching distribution data from DistroWatch..."
-echo "This may take 10-30 minutes. Please be patient."
+echo "DistroWatch asks for a 15s crawl delay, so a full run takes about 5 hours."
+echo "Progress is cached in distrowatch_cache.json; re-run with --use-cache to resume."
 echo ""
 
-DELAY=2.0
+DELAY=15
 REPAIR=""
 if [[ "$*" == *"--delay"* ]]; then
     # Extract delay value if provided: --delay 5.0
-    DELAY=$(echo "$*" | grep -oP '(?<=--delay )\d+(\.\d+)?' || echo "2.0")
+    DELAY=$(echo "$*" | sed -n 's/.*--delay \([0-9.]*\).*/\1/p')
+    DELAY=${DELAY:-15}
 fi
 
 if [[ "$*" == *"--repair"* ]]; then
@@ -47,7 +49,7 @@ if [ "$1" == "--use-cache" ]; then
     python3 fetch_distros_modern.py --output distros_raw.json --delay "$DELAY" $REPAIR
 else
     echo "Fetching fresh data (ignoring cache)..."
-    echo "Using a delay of ${DELAY}s between requests to avoid DistroWatch throttling."
+    echo "Using a delay of ${DELAY}s between requests (DistroWatch robots.txt Crawl-Delay)."
     python3 fetch_distros_modern.py --output distros_raw.json --no-cache --delay "$DELAY" $REPAIR
 fi
 
@@ -86,7 +88,7 @@ if [ -f "../public/distros.json" ]; then
     DISTRO_COUNT=$(python3 -c "import json; data = json.load(open('../public/distros.json')); print(len(data))")
     echo ""
     echo "======================================"
-    echo "✓ Success!"
+    echo "Success"
     echo "======================================"
     echo "Updated distros.json with $DISTRO_COUNT distributions"
     echo ""

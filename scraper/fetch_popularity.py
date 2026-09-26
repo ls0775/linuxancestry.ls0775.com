@@ -2,9 +2,7 @@
 """
 Fetch DistroWatch "Last 3 months" page-hit rankings and patch public/distros.json.
 
-Uses curl to fetch https://distrowatch.com/dwres.php?resource=popularity
-(Python requests gets 403; curl works fine with standard browser headers).
-Parses the "Last 3 months" ranking table and assigns rank 1-N to each distro.
+Fetches https://distrowatch.com/dwres.php?resource=popularity and parses the "Last 3 months" ranking table and assigns rank 1-N to each distro.
 
 Usage:
     python fetch_popularity.py           # fetch and patch
@@ -12,28 +10,21 @@ Usage:
 """
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
+import requests
 from bs4 import BeautifulSoup
+
+from fetch_distros_modern import HEADERS
 
 POPULARITY_URL = 'https://distrowatch.com/dwres.php?resource=popularity'
 
 
 def fetch_html(url: str) -> str:
-    """Use curl to fetch a page (bypasses 403 that Python requests gets)."""
-    result = subprocess.run(
-        [
-            'curl', '-s', '--compressed',
-            '-H', 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
-            '-H', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            '-H', 'Accept-Language: en-US,en;q=0.9',
-            url,
-        ],
-        capture_output=True, text=True, timeout=30
-    )
-    return result.stdout
+    response = requests.get(url, headers=HEADERS, timeout=30)
+    response.raise_for_status()
+    return response.text
 
 
 def parse_last_3_months(html: str) -> dict:
@@ -77,7 +68,7 @@ def main():
     print(f'Fetching: {POPULARITY_URL}')
     html = fetch_html(POPULARITY_URL)
     if not html:
-        print('ERROR: Empty response from curl.')
+        print('ERROR: Empty response.')
         sys.exit(1)
 
     rankings = parse_last_3_months(html)
@@ -110,8 +101,8 @@ def main():
         print('\n[DRY RUN] No changes written.')
         return
 
-    distros_json.write_text(json.dumps(distros, indent=2, ensure_ascii=False), encoding='utf-8')
-    print(f'\n✓ Patched {distros_json}')
+    distros_json.write_text(json.dumps(distros, indent=None, ensure_ascii=False), encoding='utf-8')
+    print(f'\nPatched {distros_json}')
 
 
 if __name__ == '__main__':

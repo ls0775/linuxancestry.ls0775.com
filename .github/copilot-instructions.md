@@ -22,8 +22,13 @@ pip install -r requirements.txt
 # Regenerate public/distros.json from raw scrape data
 python3 transform_data.py --input distros_raw.json --output ../public/distros.json
 
-# Merge with existing, preserving manual edits
+# Merge with existing. Curated fields (description, parent, start, name, icon, color)
+# keep their existing value; volatile fields (status, stop, popularity, ...) are refreshed.
+# DistroWatch robots.txt Crawl-Delay is 15s; the fetcher enforces it (full run ~5h).
 python3 transform_data.py --input distros_raw.json --output ../public/distros.json --merge
+
+# Scraper unit tests
+python3 -m pytest tests
 ```
 
 ## Architecture

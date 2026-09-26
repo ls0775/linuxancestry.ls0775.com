@@ -1,76 +1,79 @@
-# DistroWatch Scraper Engine
+# Data pipeline
 
-A modernized Python-based scraping engine designed to fetch, process, and transform Linux distribution data from DistroWatch.com for high-performance visualizations.
+Python scripts that fetch Linux distribution metadata from DistroWatch and
+produce `public/distros.json` for the app.
 
-## 🌟 Key Features
+## Setup
 
-- **Full Ecosystem Coverage**: Fetches all **1,100+** distributions (Active, Discontinued, and Dormant) using specialized search parameters (`status=All`).
-- **Data Repair Mode**: Intelligent `--repair` flag that identifies incomplete records (missing logos or popularity hits) and re-fetches only those entries.
-- **Rich Metadata Extraction**:
-  - **Logos**: Direct absolute URLs from DistroWatch CDN.
-  - **Popularity**: Historical page hit rankings.
-  - **Lineage**: Automated parent/child relationship normalization.
-  - **Attributes**: Description, Country of Origin, Architecture, Desktop Environments, and Category.
-- **Robust Pipeline**: 
-  - **Anti-Bot Resilience**: Randomized headers and jittered delays to avoid IP blocks.
-  - **Caching Layer**: Persists raw HTML responses to `distrowatch_cache.json` for instant subsequent runs.
-  - **Transformation Engine**: Converts raw DistroWatch tables into optimized JSON for React/D3.
-
-## 🏗️ Architecture
-
-```mermaid
-graph TD
-    A[DistroWatch Search] -->|status=All| B[fetch_distros_modern.py]
-    B -->|Polite Scrape| C[Individual Distro Pages]
-    C -->|Extract Metadata| D[distros_raw.json]
-    D --> E[transform_data.py]
-    E -->|Normalize Lineage| F[src/data/distros.json]
-    F --> G[React Radial/Tree View]
-```
-
-## 🚀 Quick Start
-
-### 1. Installation
 ```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Automated Update (Recommended)
-This script handles the full fetch-and-transform pipeline.
-```bash
-# Standard update using cache
-./update_distros.sh --use-cache
+The dev container does this for you.
 
-# Comprehensive repair for missing data
-./update_distros.sh --use-cache --repair
+## Full update
+
+```bash
+./update_distros.sh --use-cache          # resume from distrowatch_cache.json
+./update_distros.sh                      # start from scratch
+./update_distros.sh --use-cache --repair # re-fetch incomplete records only
 ```
 
-### 3. Manual Commands
-**Fetch raw data:**
+The script runs four steps:
+
+1. `fetch_distros_modern.py` — lists every distribution via
+   `search.php?ostype=Linux&status=All`, then fetches each `table.php` page.
+   Progress is saved to `distrowatch_cache.json` every ten records, so an
+   interrupted run can be resumed. Failed pages are reported at the end and
+   are not written to the cache.
+2. `transform_data.py --merge` — normalises parentage, dates and colours and
+   merges the result into the existing `public/distros.json`.
+3. `download_logos.py` — fills `public/logos/{id}.png` for any missing logo.
+4. `fetch_popularity.py` — patches the "Last 3 months" page-hit rank.
+
+### Crawl delay
+
+DistroWatch's `robots.txt` declares `Crawl-Delay: 15`. The fetcher enforces
+this as a minimum, so a complete run of ~1,100 pages takes roughly five hours.
+Run it in `tmux` or a detached shell and resume with `--use-cache` if needed.
+
+### Merge policy
+
+`public/distros.json` contains hand-edited descriptions and parentage fixes.
+`transform_data.py --merge` therefore treats fields in two groups:
+
+| Curated — existing value wins if non-empty | Volatile — scraped value wins if non-empty |
+|---|---|
+| `description`, `parent`, `start`, `name`, `icon`, `color` | `status`, `stop`, `popularity`, `desktop`, `architecture`, `category`, `origin`, `based_on`, `url` |
+
+A distribution that returns to `Active` has its `stop` date cleared.
+Distributions present in the existing file but missing from the scrape are
+kept. New distributions are appended.
+
+After merging, the transformer re-validates every `parent` reference and
+breaks any cycles so D3 stratification cannot fail.
+
+## Tests
+
 ```bash
-python3 fetch_distros_modern.py --output distros_raw.json --delay 1.0
+python3 -m pytest tests
 ```
 
-**Transform for React:**
-```bash
-python3 transform_data.py --input distros_raw.json --output ../src/data/distros.json --merge
-```
+Covers the merge policy, parent-name normalisation and date sanitising.
 
-## 🛠️ Repair Mode Detail
-
-The `--repair` argument is a crucial feature added to handle network instability. If a fetch fails or DistroWatch closes a connection mid-scrape, simply run with `--repair`. The scraper will:
-1. Load `distrowatch_cache.json`.
-2. Find any entry where `popularity` or `logo` is null.
-3. Re-queue only those specific entries for a fresh fetch.
-
-## 📄 File Manifest
+## Files
 
 | File | Purpose |
 |------|---------|
-| `fetch_distros_modern.py` | The main crawler engine with retry/repair logic. |
-| `transform_data.py` | Data normalization and React-format conversion. |
-| `update_distros.sh` | Wrapper script for the full pipeline. |
-| `requirements.txt` | Minimal dependencies (BeautifulSoup4, Requests). |
+| `fetch_distros_modern.py` | Crawler with retry, resume and repair |
+| `transform_data.py` | Normalisation, merge and integrity checks |
+| `download_logos.py` | Local logo cache |
+| `fetch_popularity.py` | Popularity rank patch |
+| `update_distros.sh` | Runs the four steps in order |
+| `tests/` | pytest suite |
 
-## 📜 Legal & Ethics
-This scraper includes performance-limiting delays and is intended for non-commercial educational use in visualizing Linux history. Please respect DistroWatch's `robots.txt` and server load.
+## Attribution
+
+Data is sourced from DistroWatch.com for non-commercial, educational use.
+Respect their `robots.txt` and server load.

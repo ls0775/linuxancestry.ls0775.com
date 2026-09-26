@@ -73,7 +73,6 @@ def clean_description(description: str) -> str:
         return ''
     
     # Remove "Last Update: ..." pattern
-    import re
     cleaned = re.sub(r'\s*Last Update:.*?UTC\.?', '', description, flags=re.IGNORECASE)
     
     # Remove leading distro name if it starts the description
@@ -268,6 +267,42 @@ def transform_distros(raw_data: List[Dict]) -> List[Dict]:
     return transformed
 
 
+# Fields that change over time on DistroWatch and should always be refreshed.
+VOLATILE_FIELDS = (
+    'status', 'stop', 'popularity', 'desktop', 'architecture',
+    'category', 'origin', 'based_on', 'url',
+)
+
+# Fields that are hand-edited in the committed dataset; the existing value
+# wins whenever it is non-empty.
+CURATED_FIELDS = ('description', 'parent', 'start', 'name', 'icon', 'color')
+
+
+def merge_record(existing: Dict, new: Dict) -> Dict:
+    """
+    Merge one freshly scraped record into an existing one.
+
+    Curated fields keep the existing value unless it is empty; volatile
+    fields take the scraped value unless the scrape came back empty.
+    """
+    merged = dict(existing)
+
+    for key in VOLATILE_FIELDS:
+        new_value = new.get(key)
+        if new_value not in (None, ''):
+            merged[key] = new_value
+
+    for key in CURATED_FIELDS:
+        if merged.get(key) in (None, '') and new.get(key) not in (None, ''):
+            merged[key] = new[key]
+
+    # A distribution that has come back to life should lose its stop date.
+    if new.get('status', '').lower() == 'active' and not new.get('stop'):
+        merged['stop'] = ''
+
+    return merged
+
+
 def merge_with_existing(new_data: List[Dict], existing_file: Path) -> List[Dict]:
     """
     Merge new scraped data with existing data, preserving manual edits.
@@ -286,7 +321,11 @@ def merge_with_existing(new_data: List[Dict], existing_file: Path) -> List[Dict]
         print(f"Error loading existing data: {e}. Using new data only.")
         return new_data
     
-    # Create lookup map for new data (using lowercase IDs)
+    return merge_records(new_data, existing_data)
+
+
+def merge_records(new_data: List[Dict], existing_data: List[Dict]) -> List[Dict]:
+    """Pure merge of two record lists; see merge_record for the field policy."""
     new_by_id = {d['id'].lower(): d for d in new_data}
     
     merged = []
@@ -301,19 +340,7 @@ def merge_with_existing(new_data: List[Dict], existing_file: Path) -> List[Dict]
             continue
             
         if distro_id in new_by_id:
-            # Found an update for this existing record
-            new_info = new_by_id[distro_id].copy()
-            
-            # Preserve specific fields from existing data if they are manual/special
-            # e.g., if existing has a custom icon and new one is empty
-            if distro.get('icon') and not new_info.get('icon'):
-                new_info['icon'] = distro['icon']
-            
-            # Prefer existing colors if they aren't the default gray
-            if distro.get('color') and distro['color'] not in ['#888888', '#666666']:
-                new_info['color'] = distro['color']
-                
-            merged.append(new_info)
+            merged.append(merge_record(distro, new_by_id[distro_id]))
         else:
             # Keep existing distribution as-is
             merged.append(distro)
@@ -344,8 +371,8 @@ def main():
     )
     parser.add_argument(
         '--output', '-o',
-        default='../src/data/distros.json',
-        help='Output transformed JSON file (default: ../src/data/distros.json)'
+        default='../public/distros.json',
+        help='Output transformed JSON file (default: ../public/distros.json)'
     )
     parser.add_argument(
         '--merge',

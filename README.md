@@ -44,14 +44,17 @@ npm test           # vitest
 npm run build      # production build → dist/
 ```
 
-Regenerating the data (optional):
+Regenerating the data (optional; a full scrape takes about five hours because DistroWatch asks for a 15 s crawl delay):
 
 ```bash
 cd scraper
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python3 transform_data.py --input distros_raw.json --output ../public/distros.json
+./update_distros.sh --use-cache      # fetch, merge, logos, popularity
+python3 -m pytest tests              # scraper unit tests
 ```
+
+See [scraper/README.md](./scraper/README.md) for the merge policy that keeps hand-edited descriptions and parentage.
 
 ## Licence
 
