@@ -1,18 +1,12 @@
 import React, { useState, useEffect } from 'react';
-
-interface TimelineStats {
-    total: number;
-    active: number;
-    selectedChildren?: number;
-    selectedName?: string;
-}
+import type { TreeStats } from '../utils/lineage';
 
 interface TimelineControlsProps {
     minYear: number;
     maxYear: number;
     currentYear: number;
     onYearChange: (year: number) => void;
-    stats: TimelineStats;
+    stats: TreeStats;
     className?: string;
 }
 
@@ -59,8 +53,8 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
             </div>
 
             <div className="flex items-center gap-4 text-[0.95rem]">
-                <button onClick={togglePlay} className="textbtn">{isPlaying ? 'Pause' : 'Play'}</button>
-                <button onClick={handleReset} className="textbtn" disabled={currentYear === minYear && !isPlaying}>Rewind</button>
+                <button type="button" onClick={togglePlay} className="textbtn">{isPlaying ? 'Pause' : 'Play'}</button>
+                <button type="button" onClick={handleReset} className="textbtn" disabled={currentYear === minYear && !isPlaying}>Rewind</button>
                 <input
                     type="range"
                     className="range flex-1"

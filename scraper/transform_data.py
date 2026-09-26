@@ -143,7 +143,7 @@ def convert_date_format(date_str: str) -> str:
             return f"{year}.{month}.01"
         elif len(parts) == 1:
             return f"{parts[0]}.01.01"
-    except:
+    except Exception:
         pass
     
     return date_str

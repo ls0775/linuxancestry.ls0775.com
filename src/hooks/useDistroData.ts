@@ -3,16 +3,13 @@ import { useState, useEffect } from 'react';
 export interface DistroNode {
     id: string;
     name: string;
-    color?: string;
     parent?: string | null;
     start?: string;
     stop?: string;
+    color?: string;
     icon?: string;
     logo?: string;
     url?: string;
-    isVirtual?: boolean;
-    parentId?: string;
-    actualX?: number;
     popularity?: string | null;
     description?: string | null;
     based_on?: string;
@@ -23,36 +20,46 @@ export interface DistroNode {
     status?: string;
 }
 
-export function useDistroData() {
+export interface DistroDataState {
+    data: DistroNode[];
+    isLoading: boolean;
+    error: Error | null;
+    reload: () => void;
+}
+
+export function useDistroData(url = '/distros.json'): DistroDataState {
     const [data, setData] = useState<DistroNode[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
+    const [attempt, setAttempt] = useState(0);
 
     useEffect(() => {
-        let isMounted = true;
-        
-        fetch('/distros.json')
+        const controller = new AbortController();
+
+        fetch(url, { signal: controller.signal })
             .then(res => {
-                if (!res.ok) throw new Error(`Failed to load data: ${res.statusText}`);
-                return res.json();
+                if (!res.ok) throw new Error(`Failed to load data (${res.status} ${res.statusText})`);
+                return res.json() as Promise<unknown>;
             })
-            .then(jsonData => {
-                if (isMounted) {
-                    console.log(`Successfully loaded ${jsonData.length} distributions.`);
-                    setData(jsonData);
-                    setIsLoading(false);
-                }
+            .then(json => {
+                if (!Array.isArray(json)) throw new Error('Data file is not a list of distributions');
+                setData(json as DistroNode[]);
+                setIsLoading(false);
             })
-            .catch(err => {
-                if (isMounted) {
-                    console.error('DistroData Hook Error:', err);
-                    setError(err);
-                    setIsLoading(false);
-                }
+            .catch((err: unknown) => {
+                if (controller.signal.aborted) return;
+                setError(err instanceof Error ? err : new Error(String(err)));
+                setIsLoading(false);
             });
 
-        return () => { isMounted = false; };
-    }, []);
+        return () => controller.abort();
+    }, [url, attempt]);
 
-    return { data, isLoading, error };
+    const reload = () => {
+        setError(null);
+        setIsLoading(true);
+        setAttempt(a => a + 1);
+    };
+
+    return { data, isLoading, error, reload };
 }

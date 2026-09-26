@@ -51,8 +51,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ node, ancestryPath, onClose }
         )}
 
         <div className="flex items-baseline justify-between gap-4 text-[0.95rem] pt-3 border-t border-rule">
-            <a href={`https://distrowatch.com/table.php?distribution=${node.id}`} target="_blank" rel="noopener noreferrer">View on DistroWatch</a>
-            <button onClick={onClose} className="textbtn">Close</button>
+            <a href={node.url || `https://distrowatch.com/table.php?distribution=${node.id}`} target="_blank" rel="noopener noreferrer">View on DistroWatch</a>
+            <button type="button" onClick={onClose} className="textbtn">Close</button>
         </div>
     </aside>
     );

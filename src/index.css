@@ -249,3 +249,7 @@ input[type="range"].range::-moz-range-thumb {
         transition: none;
     }
 }
+
+/* Keyboard focus on SVG nodes */
+.node-group:focus { outline: none; }
+.node-group:focus-visible circle { stroke: var(--text); stroke-width: 6; }

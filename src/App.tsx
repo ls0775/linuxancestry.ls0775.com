@@ -1,13 +1,19 @@
 import { useState, lazy, Suspense } from 'react'
 import ErrorBoundary from './components/ErrorBoundary'
+import { useDistroData } from './hooks/useDistroData'
 
 const FamilyTree = lazy(() => import('./components/FamilyTree'));
 const RadialTree = lazy(() => import('./components/RadialTree'));
 
 type ViewMode = 'tree' | 'radial';
 
+const Notice = ({ children }: { children: React.ReactNode }) => (
+  <div className="p-6 max-w-[34rem] text-[0.95rem]">{children}</div>
+);
+
 function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
+  const { data, isLoading, error, reload } = useDistroData();
 
   return (
     <div className="h-screen flex flex-col">
@@ -20,19 +26,29 @@ function App() {
         </div>
 
         <nav aria-label="View" className="flex items-baseline gap-5 text-[0.95rem]">
-          <button className="textbtn" aria-pressed={viewMode === 'tree'} onClick={() => setViewMode('tree')}>Timeline</button>
-          <button className="textbtn" aria-pressed={viewMode === 'radial'} onClick={() => setViewMode('radial')}>Radial</button>
+          <button type="button" className="textbtn" aria-pressed={viewMode === 'tree'} onClick={() => setViewMode('tree')}>Timeline</button>
+          <button type="button" className="textbtn" aria-pressed={viewMode === 'radial'} onClick={() => setViewMode('radial')}>Radial</button>
           <a href="https://github.com/ls0775/linuxancestry.ls0775.com" className="text-muted hover:text-text">Source</a>
         </nav>
       </header>
 
       <main className="flex-1 min-h-0">
-        <ErrorBoundary>
-          <Suspense fallback={<p className="p-6 text-muted font-light">Loading…</p>}>
-            {viewMode === 'tree' && <FamilyTree />}
-            {viewMode === 'radial' && <RadialTree />}
-          </Suspense>
-        </ErrorBoundary>
+        {error ? (
+          <Notice>
+            <h2 className="label mb-4">Data could not be loaded</h2>
+            <p className="text-muted font-light mb-4">{error.message}</p>
+            <button type="button" onClick={reload} className="textbtn">Try again</button>
+          </Notice>
+        ) : isLoading ? (
+          <Notice><p className="text-muted font-light" aria-live="polite">Loading…</p></Notice>
+        ) : (
+          <ErrorBoundary>
+            <Suspense fallback={<Notice><p className="text-muted font-light">Loading…</p></Notice>}>
+              {viewMode === 'tree' && <FamilyTree data={data} />}
+              {viewMode === 'radial' && <RadialTree data={data} />}
+            </Suspense>
+          </ErrorBoundary>
+        )}
       </main>
     </div>
   )

@@ -54,7 +54,7 @@ def sanitize_date(date_str: str) -> str:
         date_str = date_str.replace('.', '-')
         if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
             return date_str
-    except:
+    except Exception:
         pass
     
     return date_str
@@ -216,7 +216,7 @@ def fetch_distribution_details(session: requests.Session, slug: str, name: str) 
                     distro_data['logo'] = f"{BASE_URL}/{logo_src}"
                 else:
                     distro_data['logo'] = logo_src
-    except:
+    except Exception:
         pass
     
     # Extract description
@@ -254,7 +254,7 @@ def fetch_distribution_details(session: requests.Session, slug: str, name: str) 
                 m = re.search(r'Popularity:\s*(\d+)', text)
                 if m:
                     distro_data['popularity'] = m.group(1)
-    except:
+    except Exception:
         pass
     
     # Find the main info table
