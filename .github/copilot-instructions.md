@@ -49,7 +49,7 @@ The app is a single-page React 19 + Vite + TypeScript app that visualizes ~1,100
 - `src/hooks/useSvgSize.ts` — keeps the SVG width/height in sync with its container (ResizeObserver).
 
 **Two visualization components**, both following the same internal pattern:
-- `FamilyTree.tsx` — horizontal tidy tree with an x-axis mapped to years (1991–present); canvas size is 32,000×40,000px, navigated via D3 zoom
+- `FamilyTree.tsx` — horizontal tidy tree with an x-axis mapped to years (1991–present); canvas size is 48,000×30,000px (≈16:10 so fit-all fills a landscape viewport), navigated via D3 zoom
 - `RadialTree.tsx` — concentric radial layout where radius encodes the year of a distro's birth
 
 **Shared D3 "persistence" pattern** (critical to understand):  

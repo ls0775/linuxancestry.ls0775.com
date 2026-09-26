@@ -12,8 +12,8 @@ import { useSvgSize } from '../hooks/useSvgSize';
 import { useTreeState } from '../hooks/useTreeState';
 import type { DistroNode } from '../hooks/useDistroData';
 
-const CHART_WIDTH = 32000;
-const CHART_HEIGHT = 40000;
+const CHART_WIDTH = 48000;
+const CHART_HEIGHT = 30000;
 const PRIMARY_RANK = 50;
 const FAMILY_GAP = 1200;
 const fitScaleFor = (w: number, h: number): number => Math.min((w - 80) / CHART_WIDTH, (h - 80) / CHART_HEIGHT);
@@ -22,7 +22,7 @@ const LABEL_OFFSET = 52;
 const PRIMARY_FONT = 12;
 const SECONDARY_FONT = 9;
 /** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
-const MIN_DOT_PX = 4;
+const MIN_DOT_PX = 2.5;
 const HIT_PX = 12;
 const LINK_HIT_PX = 10;
 
@@ -56,7 +56,6 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
     const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
     const groupsRef = useRef<Groups | null>(null);
     const prevHighlightIdRef = useRef<string | null>(null);
-    const prevTimelineYearRef = useRef<number | null>(null);
     const highlightRef = useRef<(id: string) => boolean>(() => false);
 
     const state = useTreeState(data);
@@ -64,6 +63,8 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
         currentYear, timelineYear, searchTerm, selectedNode, setSelectedNode,
         activeHighlightNode, relatedIds, visibleNodes, hoverInfo, setHoverInfo, ancestryPath,
     } = state;
+    // Seeded with the initial year so the view only pans when the user scrubs the slider.
+    const prevTimelineYearRef = useRef<number>(timelineYear);
     const maxYear = currentYear + 1;
 
     useSvgSize(containerRef, svgRef);
@@ -281,12 +282,15 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             bands.set(fid, { start: cursor, originalMin: ext.min });
             cursor += ext.max - ext.min + FAMILY_GAP;
         }
+        // Bands plus gaps usually exceed CHART_HEIGHT; normalise so the layout always fills the canvas.
+        const totalHeight = Math.max(1, cursor - FAMILY_GAP);
+        const yFactor = CHART_HEIGHT / totalHeight;
         for (const node of root.descendants()) {
             if (node.data.id === ROOT_ID) {
-                node.y = cursor / 2;
+                node.y = CHART_HEIGHT / 2;
             } else {
                 const band = bands.get(getFamilyId(node))!;
-                node.y = band.start + (node.x - band.originalMin);
+                node.y = (band.start + (node.x - band.originalMin)) * yFactor;
             }
             node.x = xScale(getYear(node.data.start));
         }
