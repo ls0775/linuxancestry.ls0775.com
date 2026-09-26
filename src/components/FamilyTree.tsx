@@ -7,7 +7,7 @@ import { getVizTheme } from '../utils/theme';
 import { getYear, getPopularityRank } from '../utils/distroUtils';
 import { buildHierarchy, getFamilyId, MIN_YEAR, ROOT_ID } from '../utils/lineage';
 import { dateStamp, exportViewport, slugify } from '../utils/svgExport';
-import { cullLabels, estimateTextWidth, frameThrottle, rankLimitForZoom, type LabelCandidate } from '../utils/labelCulling';
+import { cullLabels, estimateTextWidth, frameThrottle, LOGO_ZOOM_FACTOR, rankLimitForZoom, type LabelCandidate } from '../utils/labelCulling';
 import { useSvgSize } from '../hooks/useSvgSize';
 import { useTreeState } from '../hooks/useTreeState';
 import type { DistroNode } from '../hooks/useDistroData';
@@ -23,6 +23,7 @@ const PRIMARY_FONT = 12;
 const SECONDARY_FONT = 9;
 /** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
 const MIN_DOT_PX = 2.5;
+const RING_PX = 1.25;
 const PANEL_WIDTH_PX = 22 * 16 + 32;
 const FIT_PAD_PX = 40;
 const MAX_FIT_SCALE = 0.6;
@@ -180,13 +181,15 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
                 const k = t.k;
                 const viewport = { width: containerRef.current.clientWidth, height: containerRef.current.clientHeight };
                 const highlightedNow = highlightRef.current;
-                const rankLimit = rankLimitForZoom(k / fitScaleFor(viewport.width, viewport.height), PRIMARY_RANK);
+                const zoomFactor = k / fitScaleFor(viewport.width, viewport.height);
+                const rankLimit = rankLimitForZoom(zoomFactor, PRIMARY_RANK);
 
                 gNode.selectAll<SVGCircleElement, HNode>('circle.node-dot')
-                    .attr('r', d => dotRadius(k, highlightedNow(d.data.id)));
+                    .attr('r', d => dotRadius(k, highlightedNow(d.data.id)))
+                    .attr('stroke-width', Math.max(NODE_R * 0.3, RING_PX / k));
                 gNode.selectAll<SVGCircleElement, HNode>('circle.node-hit').attr('r', HIT_PX / k);
                 gLink.selectAll('path.link-hit').attr('stroke-width', Math.max(6, LINK_HIT_PX / k));
-                gNode.selectAll('.node-logo, .node-logo-bg').style('display', () => (k >= 0.4 ? null : 'none'));
+                gNode.selectAll('.node-logo, .node-logo-bg').style('display', () => (zoomFactor >= LOGO_ZOOM_FACTOR ? null : 'none'));
 
                 const candidates: LabelCandidate[] = [];
                 gNode.selectAll<SVGTextElement, HNode>('text.node-label').each(function (d) {
@@ -341,7 +344,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             .on('mouseleave', () => setHoverInfo(null));
 
         nodeEnter.append('circle').attr('class', 'node-hit').attr('fill', 'transparent').attr('r', NODE_R);
-        nodeEnter.append('circle').attr('class', 'node-dot').attr('r', NODE_R).attr('stroke-width', 6);
+        nodeEnter.append('circle').attr('class', 'node-dot').attr('r', NODE_R);
         // Logo tile — flat page-coloured square with a hairline, shown when zoomed in.
         nodeEnter.append('rect')
             .attr('class', 'node-logo-bg')
@@ -364,18 +367,23 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             .attr('opacity', d => (!activeHighlightNode || highlighted(d.data.id) ? 1 : 0.1))
             .attr('transform', d => `translate(${d.x},${d.y})`);
 
+        // Discontinued distros are drawn as hollow rings with muted labels so they recede.
         nodeUpdate.select('circle.node-dot')
             .attr('fill', d => {
+                if (d.data.stop) return theme.bg;
                 if (highlighted(d.data.id)) return theme.linkHighlight;
                 if (d.data.id === ROOT_ID) return theme.nodeRoot;
-                if (d.data.stop) return theme.nodeDiscontinued;
                 return colorScale(getFamilyId(d));
             })
-            .attr('stroke', d => (activeHighlightNode?.id === d.data.id ? theme.bg : 'none'));
+            .attr('stroke', d => {
+                if (!d.data.stop) return 'none';
+                return highlighted(d.data.id) ? theme.linkHighlight : theme.nodeDiscontinued;
+            });
 
         nodeUpdate.select('text')
             .attr('fill', d => {
                 if (d.data.id === ROOT_ID || highlighted(d.data.id)) return theme.labelHighlight;
+                if (d.data.stop) return theme.labelMuted;
                 return isPrimary(d) ? theme.text : theme.label;
             })
             .text(d => d.data.name);

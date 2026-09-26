@@ -18,6 +18,7 @@ export interface VizTheme {
     nodeRoot: string;
     label: string;
     labelHighlight: string;
+    labelMuted: string;
     grid: string;
     gridMajor: string;
     axis: string;
@@ -39,6 +40,7 @@ export function getVizTheme(): VizTheme {
         nodeRoot: read('--viz-node-root'),
         label: read('--viz-label'),
         labelHighlight: read('--viz-label-highlight'),
+        labelMuted: read('--viz-label-muted'),
         grid: read('--viz-grid'),
         gridMajor: read('--viz-grid-major'),
         axis: read('--viz-axis'),

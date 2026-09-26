@@ -22,6 +22,9 @@ export interface LabelCandidate {
 export const rankLimitForZoom = (zoomFactor: number, base: number): number =>
     Math.floor(base * Math.max(1, zoomFactor) ** 2);
 
+/** Zoom (relative to fit-all) at which distro logos replace plain dots in both views. */
+export const LOGO_ZOOM_FACTOR = 16;
+
 /** Rough on-screen width of a label at the given font size. */
 export const estimateTextWidth = (text: string, fontPx: number): number => text.length * fontPx * 0.56;
 

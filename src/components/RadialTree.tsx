@@ -7,7 +7,7 @@ import { getVizTheme } from '../utils/theme';
 import { getYear, getPopularityRank } from '../utils/distroUtils';
 import { buildHierarchy, getFamilyId, MIN_YEAR, ROOT_ID } from '../utils/lineage';
 import { dateStamp, exportViewport, slugify } from '../utils/svgExport';
-import { cullLabels, estimateTextWidth, frameThrottle, rankLimitForZoom, rotatedLabelBox, type LabelCandidate } from '../utils/labelCulling';
+import { cullLabels, estimateTextWidth, frameThrottle, LOGO_ZOOM_FACTOR, rankLimitForZoom, rotatedLabelBox, type LabelCandidate } from '../utils/labelCulling';
 import { useSvgSize } from '../hooks/useSvgSize';
 import { useTreeState } from '../hooks/useTreeState';
 import type { DistroNode } from '../hooks/useDistroData';
@@ -16,11 +16,14 @@ const RADIUS = 2500;
 const PRIMARY_RANK = 50;
 const fitScaleFor = (w: number, h: number): number => Math.min((w - 80) / (RADIUS * 2), (h - 80) / (RADIUS * 2));
 const NODE_R = 6;
-const LABEL_OFFSET = 8;
+const LABEL_OFFSET = 10;
+const LOGO_TILE = 14;
+const LOGO_IMG = 10;
 const PRIMARY_FONT = 13;
 const SECONDARY_FONT = 9;
 /** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
 const MIN_DOT_PX = 3.5;
+const RING_PX = 1.25;
 const PANEL_WIDTH_PX = 22 * 16 + 32;
 const HIT_PX = 11;
 const LINK_HIT_PX = 10;
@@ -132,10 +135,13 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
                 const k = t.k;
                 const viewport = { width: containerRef.current.clientWidth, height: containerRef.current.clientHeight };
                 const highlightedNow = highlightRef.current;
-                const rankLimit = rankLimitForZoom(k / fitScaleFor(viewport.width, viewport.height), PRIMARY_RANK);
+                const zoomFactor = k / fitScaleFor(viewport.width, viewport.height);
+                const rankLimit = rankLimitForZoom(zoomFactor, PRIMARY_RANK);
+                gNode.selectAll('.node-logo, .node-logo-bg').style('display', () => (zoomFactor >= LOGO_ZOOM_FACTOR ? null : 'none'));
 
                 gNode.selectAll<SVGCircleElement, HNode>('circle.node-dot')
-                    .attr('r', d => Math.max(highlightedNow(d.data.id) ? NODE_R * 1.33 : NODE_R, MIN_DOT_PX / k));
+                    .attr('r', d => Math.max(highlightedNow(d.data.id) ? NODE_R * 1.33 : NODE_R, MIN_DOT_PX / k))
+                    .attr('stroke-width', Math.max(NODE_R * 0.3, RING_PX / k));
                 gNode.selectAll<SVGCircleElement, HNode>('circle.node-hit').attr('r', HIT_PX / k);
                 gLink.selectAll('path.link-hit').attr('stroke-width', Math.max(3, LINK_HIT_PX / k));
                 gZoom.selectAll('text.year-label').style('font-size', `${10 / k}px`);
@@ -237,14 +243,14 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             .attr('d', diagonal);
 
         const nodes = gNode.selectAll<SVGGElement, HNode>('g.node-group').data(root.descendants().reverse(), d => d.data.id);
-        nodes.exit().transition().duration(duration).attr('fill-opacity', 0).remove();
+        nodes.exit().transition().duration(duration).attr('opacity', 0).remove();
 
         const placement = (d: HNode) => `rotate(${(d.x * 180) / Math.PI - 90}) translate(${d.y},0)`;
 
         const nodeEnter = nodes.enter().append('g')
             .attr('class', 'node-group')
             .attr('transform', placement)
-            .attr('fill-opacity', 0)
+            .attr('opacity', 0)
             .attr('role', d => (d.data.id === ROOT_ID ? null : 'button'))
             .attr('tabindex', d => (d.data.id === ROOT_ID ? null : isPrimary(d) ? 0 : -1))
             .attr('aria-label', d => d.data.name)
@@ -262,6 +268,18 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
 
         nodeEnter.append('circle').attr('class', 'node-hit').attr('fill', 'transparent').attr('r', NODE_R);
         nodeEnter.append('circle').attr('class', 'node-dot').attr('r', NODE_R);
+        // Logo tile — flat page-coloured square with a hairline, shown when zoomed in.
+        nodeEnter.append('rect')
+            .attr('class', 'node-logo-bg')
+            .attr('x', -LOGO_TILE / 2).attr('y', -LOGO_TILE / 2).attr('width', LOGO_TILE).attr('height', LOGO_TILE)
+            .attr('fill', theme.bg).attr('stroke', theme.rule).attr('stroke-width', 0.3)
+            .style('display', 'none').style('pointer-events', 'none');
+        nodeEnter.append('image')
+            .attr('class', 'node-logo')
+            .attr('href', d => `/logos/${d.data.id}.png`)
+            .attr('x', -LOGO_IMG / 2).attr('y', -LOGO_IMG / 2).attr('width', LOGO_IMG).attr('height', LOGO_IMG)
+            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .style('display', 'none').style('pointer-events', 'none');
         nodeEnter.append('text').attr('class', 'node-label').attr('dy', '0.31em')
             .style('paint-order', 'stroke').style('stroke', theme.bg).style('stroke-width', '3px')
             .style('font-weight', '400');
@@ -269,14 +287,19 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
         const nodeMerge = nodes.merge(nodeEnter);
         const nodeUpdate = nodeMerge.transition().duration(duration)
             .attr('transform', placement)
-            .attr('fill-opacity', d => (!activeHighlightNode || highlighted(d.data.id) ? 1 : 0.1));
+            .attr('opacity', d => (!activeHighlightNode || highlighted(d.data.id) ? 1 : 0.1));
 
+        // Discontinued distros are drawn as hollow rings with muted labels so they recede.
         nodeUpdate.select('circle.node-dot')
             .attr('fill', d => {
+                if (d.data.stop) return theme.bg;
                 if (highlighted(d.data.id)) return theme.linkHighlight;
                 if (d.data.id === ROOT_ID) return theme.nodeRoot;
-                if (d.data.stop) return theme.nodeDiscontinued;
                 return colorScale(getFamilyId(d));
+            })
+            .attr('stroke', d => {
+                if (!d.data.stop) return 'none';
+                return highlighted(d.data.id) ? theme.linkHighlight : theme.nodeDiscontinued;
             });
 
         nodeUpdate.select('text')
@@ -285,6 +308,7 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             .attr('text-anchor', d => (d.x >= Math.PI ? 'end' : 'start'))
             .attr('fill', d => {
                 if (highlighted(d.data.id)) return theme.labelHighlight;
+                if (d.data.stop) return theme.labelMuted;
                 return isPrimary(d) ? theme.text : theme.label;
             })
             .text(d => d.data.name);

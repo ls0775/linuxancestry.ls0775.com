@@ -78,11 +78,11 @@ Both components initialize SVG groups once into a `groupsRef` (on the first rend
 
 **Node coloring logic (both views):**
 - Highlighted (in lineage): `--viz-link-highlight`
-- Discontinued (`d.stop` is set): `--viz-node-discontinued` (light, receding)
+- Discontinued (`d.stop` is set): hollow ring — fill `--viz-bg`, stroke `--viz-node-discontinued` (constant ~1.25 px on screen via `RING_PX / k`), label `--viz-label-muted`
 - Active: colour of the top-level family ancestor via `d3.scaleOrdinal(theme.families)` (`--viz-family-0..9`, low-chroma)
 - `Linux_Original` root: `--viz-node-root`
 
-**Logos:** `getLogoUrl()` returns the local `/logos/{id}.png`; `getFallbackLogoUrl()` (used on `onError`) returns `node.icon` or a constructed DistroWatch URL. The CSP `img-src` allows `distrowatch.com` for that fallback only.
+**Logos:** `getLogoUrl()` returns the local `/logos/{id}.png`; `getFallbackLogoUrl()` (used on `onError`) returns `node.icon` or a constructed DistroWatch URL. The CSP `img-src` allows `distrowatch.com` for that fallback only. In both tree views a `rect.node-logo-bg` + `image.node-logo` per node are toggled in `applyZoomLevel` once `k / fitScale >= LOGO_ZOOM_FACTOR` (16, `labelCulling.ts`), so logos appear at the same relative zoom in Timeline and Radial.
 
 **Labels (both views):** `applyZoomLevel` (stored on `groupsRef`, run on zoom and after each data update) sizes dots/hit targets and culls labels via `src/utils/labelCulling.ts`. At fit-all scale only the top-50 (`PRIMARY_RANK`) names are eligible; `rankLimitForZoom` widens that quadratically with zoom so all names are eligible after ~5×. Eligible labels are then greedily placed (highlighted > primary > secondary) and any that would overlap are hidden. Transparent `circle.node-hit` and `path.link-hit` shapes provide the click targets; export strips them.
 
