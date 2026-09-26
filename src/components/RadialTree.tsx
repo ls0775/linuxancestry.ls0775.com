@@ -1,15 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ExternalLink, Calendar, Search, Maximize2, X, Download } from 'lucide-react';
 import TimelineControls from './TimelineControls';
+import DetailPanel from './DetailPanel';
+import { getVizTheme } from '../utils/theme';
 import { useDistroData, type DistroNode } from '../hooks/useDistroData';
 import {
-    parseDate, getYear, getLogoUrl, getFallbackLogoUrl,
-    isPrimaryDistro,
-    HoverTooltip, PopularityBadge, AncestryBreadcrumb,
+    parseDate, getYear,
 } from '../utils/distroUtils';
+import { HoverTooltip } from './DistroWidgets';
 
 const RadialTree: React.FC = () => {
     const { data: distroData, isLoading } = useDistroData();
@@ -175,11 +174,7 @@ const RadialTree: React.FC = () => {
                 gZoom.selectAll('text.node-label')
                     .style('font-size', function(d: any) {
                         const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
-                        return ((rank <= 100 ? 16 : 9) / k) + 'px';
-                    })
-                    .style('font-weight', function(d: any) {
-                        const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
-                        return rank <= 100 ? '900' : '600';
+                        return ((rank <= 100 ? 14 : 9) / k) + 'px';
                     })
                     .style('display', function(d: any) {
                         const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
@@ -207,8 +202,9 @@ const RadialTree: React.FC = () => {
         if (!groupsRef.current || !distroData.length) return;
         const { gNode, gLink, gYearLines, radiusScale, treeLayout, diagonal, radius: currentRadius } = groupsRef.current;
         
-        const duration = 400; 
-        const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+        const duration = 400;
+        const theme = getVizTheme();
+        const colorScale = d3.scaleOrdinal<string>(theme.families);
         const search = searchTerm.trim().toLowerCase();
 
         // 1. Initial Filtering
@@ -272,13 +268,13 @@ const RadialTree: React.FC = () => {
         const yearsToDraw = d3.range(1991, currentYear + 1, 5);
         const yearCircles = gYearLines.selectAll('circle.year-circle').data(yearsToDraw);
         yearCircles.enter().append("circle").attr("class", "year-circle")
-            .attr("fill", "none").attr("stroke", "#ffffff").attr("stroke-opacity", 0.05).attr("stroke-dasharray", "2,2")
+            .attr("fill", "none").attr("stroke", theme.grid).attr("stroke-width", 1.5)
             .merge(yearCircles as any).attr("r", (d: number) => radiusScale(d));
 
         const yearLabels = gYearLines.selectAll('text.year-label').data(yearsToDraw);
         yearLabels.enter().append("text").attr("class", "year-label")
-            .attr("dy", "0.35em").attr("text-anchor", "middle").attr("fill", "#ffffff").attr("fill-opacity", 0.3)
-            .style("font-size", "10px").style("font-weight", "bold").style("pointer-events", "none")
+            .attr("dy", "0.35em").attr("text-anchor", "middle").attr("fill", theme.axis)
+            .style("font-size", "10px").style("font-family", theme.font).style("pointer-events", "none")
             .merge(yearLabels as any).attr("y", (d: number) => -radiusScale(d)).text((d: number) => d);
 
         // Links
@@ -290,9 +286,9 @@ const RadialTree: React.FC = () => {
             .attr("d", (d: any) => { const o = { x: d.source.x, y: d.source.y }; return diagonal({ source: o, target: o } as any); })
             .merge(linkSelection as any).transition().duration(duration)
             .attr("d", diagonal as any)
-            .attr("stroke", (d: any) => activeHighlightNode && relatedIds.has(d.target.id) ? "#facc15" : "#334155")
-            .attr("stroke-opacity", (d: any) => !activeHighlightNode ? 0.4 : (relatedIds.has(d.target.id) ? 1 : 0.1))
-            .attr("stroke-width", (d: any) => activeHighlightNode && relatedIds.has(d.target.id) ? 3 : 1.5);
+            .attr("stroke", (d: any) => activeHighlightNode && relatedIds.has(d.target.id) ? theme.linkHighlight : theme.link)
+            .attr("stroke-opacity", (d: any) => !activeHighlightNode ? 1 : (relatedIds.has(d.target.id) ? 1 : 0.15))
+            .attr("stroke-width", (d: any) => activeHighlightNode && relatedIds.has(d.target.id) ? 2.5 : 1.5);
 
         // Nodes
         const nodes = root.descendants().reverse();
@@ -320,7 +316,7 @@ const RadialTree: React.FC = () => {
                 }
             });
 
-        nodeEnter.append('circle').attr('r', 6).attr('stroke', '#06b6d4').attr('stroke-width', 2);
+        nodeEnter.append('circle').attr('r', 6);
         nodeEnter.append('text').attr('class', 'node-label').attr('dy', '0.31em').style('font-size', '10px');
 
         nodeEnter
@@ -339,9 +335,9 @@ const RadialTree: React.FC = () => {
 
         nodeUpdate.select("circle")
             .attr("fill", (d: any) => {
-                if (activeHighlightNode && relatedIds.has(d.data.id)) return '#facc15';
-                if (d.data.id === 'Linux_Original') return '#64748b';
-                if (d.data.stop) return '#ef4444';
+                if (activeHighlightNode && relatedIds.has(d.data.id)) return theme.linkHighlight;
+                if (d.data.id === 'Linux_Original') return theme.nodeRoot;
+                if (d.data.stop) return theme.nodeDiscontinued;
                 let family = d;
                 while (family.parent && family.parent.data.id !== 'Linux_Original') { family = family.parent; }
                 return colorScale(family.data.id);
@@ -352,12 +348,13 @@ const RadialTree: React.FC = () => {
             .attr("transform", (d: any) => d.x >= Math.PI ? "rotate(180)" : null)
             .attr("x", (d: any) => d.x >= Math.PI ? -8 : 8)
             .attr("text-anchor", (d: any) => d.x >= Math.PI ? "end" : "start")
-            .style("paint-order", "stroke").style("stroke", "#0f172a").style("stroke-width", "3px")
-            .style("font-weight", (d: any) => {
+            .style("paint-order", "stroke").style("stroke", theme.bg).style("stroke-width", "3px")
+            .style("font-weight", "400")
+            .attr("fill", (d: any) => {
+                if (activeHighlightNode && relatedIds.has(d.id)) return theme.labelHighlight;
                 const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
-                return rank <= 100 ? '900' : '600';
+                return rank <= 100 ? theme.text : theme.label;
             })
-            .attr("fill", (d: any) => activeHighlightNode && relatedIds.has(d.id) ? "#facc15" : "#cbd5e1")
             .text((d: any) => d.data.name);
 
         // Sync label font-size/weight/visibility with current zoom on each render
@@ -369,11 +366,7 @@ const RadialTree: React.FC = () => {
         gNode.selectAll('text.node-label')
             .style('font-size', function(d: any) {
                 const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
-                return ((rank <= 100 ? 16 : 9) / currentK) + 'px';
-            })
-            .style('font-weight', function(d: any) {
-                const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
-                return rank <= 100 ? '900' : '600';
+                return ((rank <= 100 ? 14 : 9) / currentK) + 'px';
             })
             .style('display', function(d: any) {
                 const rank = d?.data?.popularity ? parseInt(d.data.popularity) : 9999;
@@ -430,20 +423,21 @@ const RadialTree: React.FC = () => {
         if (gZoomEl) {
             gZoomEl.setAttribute('transform', `translate(${Math.round(vw / 2)},${Math.round(vh / 2)})`);
         }
+        const theme = getVizTheme();
         const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         bg.setAttribute('x', String(vx)); bg.setAttribute('y', String(vy));
         bg.setAttribute('width', String(vw)); bg.setAttribute('height', String(vh));
-        bg.setAttribute('fill', '#0f172a');
+        bg.setAttribute('fill', theme.bg);
         svgClone.insertBefore(bg, svgClone.firstChild);
         const fsCSS = (px: number) => `${Math.round(px / es)}px`;
         svgClone.querySelectorAll('text.node-label').forEach(el => {
             (el as SVGElement).style.fontSize = fsCSS(10);
             (el as SVGElement).style.display = '';
-            (el as SVGElement).setAttribute('font-family', 'system-ui, sans-serif');
+            (el as SVGElement).setAttribute('font-family', theme.font);
         });
         svgClone.querySelectorAll('text.year-label').forEach(el => {
             (el as SVGElement).style.fontSize = fsCSS(12);
-            (el as SVGElement).setAttribute('font-family', 'system-ui, sans-serif');
+            (el as SVGElement).setAttribute('font-family', theme.font);
         });
         const xml = new XMLSerializer().serializeToString(svgClone);
         const blob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n', xml], { type: 'image/svg+xml;charset=utf-8' });
@@ -464,17 +458,18 @@ const RadialTree: React.FC = () => {
         handleResetZoom();
     };
 
-    if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>;
+    if (isLoading) return <p className="p-6 text-muted font-light">Loading…</p>;
 
     return (
-        <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-[#0f172a]">
-            <div className="absolute top-8 left-8 z-20 flex flex-col gap-6">
-                <div className="flex items-center gap-6">
-                    <div className="relative group w-96">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-cyan-500 transition-colors" />
+        <div ref={containerRef} className="relative w-full h-full overflow-hidden">
+            <div className="panel absolute top-4 left-4 z-20 w-[26rem] max-w-[calc(100%-2rem)] p-5 flex flex-col gap-4">
+                <div className="flex items-baseline gap-5 text-[0.95rem]">
+                    <div className="relative flex-1">
                         <input
-                            type="text" placeholder="Search distributions..."
-                            className="w-full bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl py-4.5 pl-14 pr-14 text-sm focus:outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 transition-all text-white shadow-2xl"
+                            type="search"
+                            className="field"
+                            aria-label="Search distributions"
+                            placeholder="Search distributions"
                             value={searchTerm}
                             onChange={(e) => {
                                 setSearchTerm(e.target.value);
@@ -505,82 +500,33 @@ const RadialTree: React.FC = () => {
                             }}
                         />
                         {showSuggestions && suggestions.length > 0 && (
-                            <div className="absolute top-full left-0 mt-1 w-full bg-slate-900 border border-slate-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
+                            <ul className="panel absolute top-full left-0 right-0 z-50 list-none m-0 p-0" role="listbox">
                                 {suggestions.map((s, idx) => (
-                                    <button
-                                        key={s.id}
-                                        onMouseDown={() => { setSearchTerm(s.name); setShowSuggestions(false); }}
-                                        className={`w-full text-left px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-700/60 flex items-center justify-between gap-2 transition-colors ${idx === selectedSuggestionIndex ? 'bg-slate-700/80 text-cyan-400 font-semibold' : ''}`}
-                                    >
-                                        <span className="truncate">{s.name}</span>
-                                        <span className="text-xs text-slate-500 shrink-0">{s.start?.slice(0, 4)}</span>
-                                    </button>
+                                    <li key={s.id} role="option" aria-selected={idx === selectedSuggestionIndex}>
+                                        <button
+                                            onMouseDown={() => { setSearchTerm(s.name); setShowSuggestions(false); }}
+                                            className={`w-full text-left px-3 py-1.5 flex items-baseline justify-between gap-3 border-t border-rule first:border-t-0 ${idx === selectedSuggestionIndex ? 'text-text underline decoration-1 underline-offset-[0.2em]' : 'text-muted hover:text-text'}`}
+                                        >
+                                            <span className="truncate">{s.name}</span>
+                                            <span className="text-[0.8rem] font-light shrink-0 tabular-nums">{s.start?.slice(0, 4)}</span>
+                                        </button>
+                                    </li>
                                 ))}
-                            </div>
-                        )}
-                        {(searchTerm || selectedNode) && (
-                            <button onClick={() => { setSearchTerm(''); setSelectedNode(null); }} className="absolute right-4 top-1/2 -translate-y-1/2 bg-rose-500 p-2 rounded-xl text-white hover:bg-rose-400 shadow-lg">
-                                <X className="w-4 h-4" />
-                            </button>
+                            </ul>
                         )}
                     </div>
-                    <div className="flex bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl p-1.5 shadow-2xl">
-                        <button onClick={() => setShowAll(false)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${!showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{`ACTIVE ${timelineYear}`}</button>
-                        <button onClick={() => setShowAll(true)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>SHOW ALL</button>
-                        <button onClick={handleReset} className="px-6 py-3 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-500/10 transition-all border-l border-slate-700/50">RESET</button>
-                    </div>
+                    <button onClick={() => setShowAll(false)} className="textbtn" aria-pressed={!showAll}>Active</button>
+                    <button onClick={() => setShowAll(true)} className="textbtn" aria-pressed={showAll}>All</button>
+                    <button onClick={handleReset} className="textbtn">Reset</button>
                 </div>
-                <div className="w-[32rem]">
-                    <TimelineControls minYear={1991} maxYear={2026} currentYear={timelineYear} onYearChange={setTimelineYear} stats={stats} />
-                </div>
+                <TimelineControls minYear={1991} maxYear={currentYear} currentYear={timelineYear} onYearChange={setTimelineYear} stats={stats} className="pt-4 border-t border-rule" />
             </div>
-            <div className="absolute top-8 right-8 z-20">
-                <div className="flex flex-col gap-2">
-                    <button onClick={handleResetZoom} className="p-4 bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl text-slate-400 hover:text-white transition-all shadow-2xl">
-                        <Maximize2 className="w-6 h-6" />
-                    </button>
-                    <button onClick={exportImage} title="Export SVG" className="p-4 bg-slate-900/40 backdrop-blur-3xl border border-slate-700/50 rounded-2xl text-slate-400 hover:text-cyan-400 transition-all shadow-2xl">
-                        <Download className="w-6 h-6" />
-                    </button>
-                </div>
+            <div className="absolute top-4 right-4 z-20 flex items-baseline gap-5 text-[0.95rem]">
+                <button onClick={handleResetZoom} className="textbtn">Fit</button>
+                <button onClick={exportImage} className="textbtn">Export SVG</button>
             </div>
             <svg ref={svgRef} className="w-full h-full" />
-            <AnimatePresence>
-                {selectedNode && (
-                    <motion.div initial={{ opacity: 0, x: 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 100 }} className="absolute bottom-8 right-8 z-30 w-96 bg-slate-950/90 backdrop-blur-3xl border border-white/10 rounded-[3rem] shadow-2xl p-10 overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-3" style={{ backgroundColor: selectedNode.color || '#06b6d4' }}></div>
-                        <div className="flex items-start gap-8 mb-10">
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2 flex-wrap mb-2">
-                                    <h2 className="text-4xl font-black text-white leading-[0.9]">{selectedNode.name}</h2>
-                                    <PopularityBadge node={selectedNode} />
-                                </div>
-                                <p className="text-[10px] text-cyan-400 font-black tracking-[0.3em] uppercase opacity-70">{selectedNode.parent ? `Ancestor: ${selectedNode.parent}` : 'Origin Project'}</p>
-                                <AncestryBreadcrumb path={ancestryPath} />
-                            </div>
-                            <div className="bg-white p-4 rounded-3xl shadow-2xl flex items-center justify-center w-24 h-24 flex-shrink-0 overflow-hidden">
-                                <img src={getLogoUrl(selectedNode)} alt="" className="w-20 h-20 object-contain z-10" onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = getFallbackLogoUrl(selectedNode); }} />
-                            </div>
-                        </div>
-                        <div className="space-y-8 mb-12">
-                            <div className="flex items-center gap-6">
-                                <div className="p-4 bg-white/5 rounded-3xl text-cyan-400"><Calendar className="w-7 h-7" /></div>
-                                <div>
-                                    <p className="text-white font-black text-xl leading-none mb-1">{selectedNode.start || 'Unknown Release'}</p>
-                                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-none">{selectedNode.stop ? `Retired ${selectedNode.stop}` : 'In Active Production'}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="text-sm text-slate-300 leading-relaxed max-h-48 overflow-y-auto mb-10 pr-4 scrollbar-thin scrollbar-thumb-slate-800">
-                            {selectedNode.description || 'Historical data indexing in progress.'}
-                        </div>
-                        <a href={`https://distrowatch.com/table.php?distribution=${selectedNode.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 w-full py-5 bg-cyan-500 hover:bg-cyan-400 text-white rounded-[2rem] font-black text-xs tracking-widest transition-all shadow-2xl shadow-cyan-500/20">
-                            VIEW PROJECT ORIGINS
-                            <ExternalLink className="w-4 h-4" />
-                        </a>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {selectedNode && <DetailPanel node={selectedNode} ancestryPath={ancestryPath} onClose={() => setSelectedNode(null)} />}
             {hoverInfo && <HoverTooltip node={hoverInfo.node} x={hoverInfo.x} y={hoverInfo.y} />}
         </div>
     );

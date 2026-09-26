@@ -54,17 +54,19 @@ Both components inject a synthetic `{ id: "Linux_Original", name: "Linux" }` nod
 **`DistroNode` schema** (defined in `src/hooks/useDistroData.ts`):  
 `id`, `name`, `parent` (nullable string referencing another `id`), `start` / `stop` (dot-separated date strings), `color`, `icon`/`logo` (URL), `popularity`, `description`, `based_on`, `architecture`, `desktop`, `category`, `origin`, `status`.
 
+**Design system:** follow [`DESIGN.md`](../DESIGN.md) ("calm, light"). All colours are CSS tokens in `:root` (`src/index.css`); never hardcode a colour in a component. D3 code reads tokens at runtime via `getVizTheme()` (`src/utils/theme.ts`) so the SVG export stays self-contained. No framer-motion, no entrance animations, no shadows/gradients/blur; buttons are plain text (`.textbtn`), inputs are underlined (`.field`), floating surfaces use `.panel` (bg + hairline).
+
 **Lineage highlighting:**  
-`activeHighlightNode` is computed from whichever is set first: `selectedNode` (click) or an exact-match search. Highlighted nodes/links render in yellow (`#facc15`); non-related nodes drop to `opacity: 0.1`.
+`activeHighlightNode` is computed from whichever is set first: `selectedNode` (click) or an exact-match search. Highlighted nodes/links render in `--viz-link-highlight` (= `--text`); non-related nodes drop to `opacity: 0.1`.
 
 **Node coloring logic (both views):**
-- Highlighted (in lineage): `#facc15` (yellow)
-- Discontinued (`d.stop` is set): `#ef4444` (red)
-- Active: color of the top-level family ancestor via `d3.scaleOrdinal(d3.schemeCategory10)`
-- `Linux_Original` root: `#64748b` (slate)
+- Highlighted (in lineage): `--viz-link-highlight`
+- Discontinued (`d.stop` is set): `--viz-node-discontinued` (light, receding)
+- Active: colour of the top-level family ancestor via `d3.scaleOrdinal(theme.families)` (`--viz-family-0..9`, low-chroma)
+- `Linux_Original` root: `--viz-node-root`
 
 **Logo fallback:** `getLogoUrl()` tries `node.logo`, then `node.icon`, then constructs `https://distrowatch.com/images/y9go/{slug}.png`. Image `onError` falls back to `linux.png`.
 
 **Tailwind CSS v4** is used via the `@tailwindcss/postcss` plugin — configuration is in `tailwind.config.js` and `postcss.config.js`. This is different from the v3 `@apply`-based approach; utility classes are used directly in JSX.
 
-**Vendor chunking:** `vite.config.ts` splits `d3` into `d3-vendor` and `framer-motion` into `animation-vendor` to keep the initial bundle small.
+**Vendor chunking:** `vite.config.ts` splits `d3` into `d3-vendor` to keep the initial bundle small.

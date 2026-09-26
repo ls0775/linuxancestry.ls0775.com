@@ -10,7 +10,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           'd3-vendor': ['d3'],
-          'animation-vendor': ['framer-motion'],
         }
       }
     }

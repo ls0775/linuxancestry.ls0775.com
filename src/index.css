@@ -1,1 +1,251 @@
 @import "tailwindcss";
+
+@font-face {
+    font-family: 'Outfit';
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+    src: url('/fonts/outfit-300.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Outfit';
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    src: url('/fonts/outfit-400.ttf') format('truetype');
+}
+
+:root {
+    --bg: #faf9f6;
+    --text: #2b2a27;
+    --muted: #6f6c66;
+    --rule: #e4e1da;
+    --link: #2b2a27;
+    --link-underline: #b8b3a8;
+    --font: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /* Visualization-only tokens. Kept low-chroma so the tree reads as one calm surface. */
+    --viz-link: #d6d2c9;
+    --viz-link-highlight: #2b2a27;
+    --viz-node-active: #8a867d;
+    --viz-node-discontinued: #c9c4b8;
+    --viz-node-root: #2b2a27;
+    --viz-label: #6f6c66;
+    --viz-label-highlight: #2b2a27;
+    --viz-grid: #ebe8e1;
+    --viz-grid-major: #ddd9d0;
+    --viz-axis: #a39f95;
+    --viz-axis-major: #6f6c66;
+    --viz-family-0: #7d8a7a;
+    --viz-family-1: #8a7d7a;
+    --viz-family-2: #7a808a;
+    --viz-family-3: #8a877a;
+    --viz-family-4: #7f7a8a;
+    --viz-family-5: #7a8a87;
+    --viz-family-6: #8a7f7a;
+    --viz-family-7: #83887a;
+    --viz-family-8: #7a7f8a;
+    --viz-family-9: #8a7a83;
+}
+
+@theme {
+    --color-bg: var(--bg);
+    --color-text: var(--text);
+    --color-muted: var(--muted);
+    --color-rule: var(--rule);
+    --color-link-underline: var(--link-underline);
+    --font-sans: var(--font);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    min-height: 100%;
+    overscroll-behavior: none;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    font-weight: 400;
+    min-height: 100vh;
+    min-height: 100svh;
+    overflow: hidden;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+    width: 100%;
+}
+
+a {
+    color: var(--link);
+    text-decoration: underline;
+    text-decoration-color: var(--link-underline);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    transition: text-decoration-color 0.15s ease;
+}
+
+a:hover {
+    text-decoration-color: var(--text);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 3px;
+    border-radius: 2px;
+}
+
+button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+input {
+    font: inherit;
+    color: inherit;
+}
+
+::placeholder {
+    color: var(--muted);
+    opacity: 1;
+}
+
+/* Small uppercase label, per DESIGN.md h2 */
+.label {
+    font-size: 0.8rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+}
+
+/* Text button: reads as a plain link, no box */
+.textbtn {
+    color: var(--muted);
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    transition: text-decoration-color 0.15s ease, color 0.15s ease;
+}
+
+.textbtn:hover {
+    color: var(--text);
+    text-decoration-color: var(--text);
+}
+
+.textbtn[aria-pressed="true"],
+.textbtn[aria-current="true"] {
+    color: var(--text);
+    text-decoration-color: var(--text);
+}
+
+.textbtn:disabled {
+    color: var(--rule);
+    cursor: default;
+    text-decoration-color: transparent;
+}
+
+/* Underlined text input, no box */
+.field {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+    padding: 0.35rem 0;
+    width: 100%;
+    transition: border-color 0.15s ease;
+}
+
+.field:hover,
+.field:focus {
+    border-bottom-color: var(--text);
+    outline: none;
+}
+
+/* Range input: hairline track, small round thumb */
+input[type="range"].range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 1.25rem;
+    background: transparent;
+    cursor: pointer;
+}
+
+input[type="range"].range::-webkit-slider-runnable-track {
+    height: 1px;
+    background: var(--rule);
+}
+
+input[type="range"].range::-moz-range-track {
+    height: 1px;
+    background: var(--rule);
+}
+
+input[type="range"].range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-top: -0.35rem;
+    border-radius: 50%;
+    background: var(--text);
+    border: 0;
+}
+
+input[type="range"].range::-moz-range-thumb {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background: var(--text);
+    border: 0;
+}
+
+/* Panels: separated from the canvas by background and a hairline, nothing else */
+.panel {
+    background: var(--bg);
+    border: 1px solid var(--rule);
+}
+
+.hr {
+    border: 0;
+    border-top: 1px solid var(--rule);
+}
+
+/* SVG */
+.node text {
+    font-family: var(--font);
+    font-weight: 400;
+    fill: var(--viz-label);
+}
+
+.link {
+    fill: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    a,
+    .textbtn,
+    .field {
+        transition: none;
+    }
+}

@@ -18,19 +18,31 @@ This project is a modern reimagining of the classic Linux lineage visualizations
 - **Performance Optimized**: Code-splitting, vendor chunking, and lazy loading for a sub-second initial interactive state.
 
 ## 📄 Documentation
+- **[Design system](./DESIGN.md)**: Calm, light, flat. Tokens and rules for all UI.
 - **[Product Requirement Document (PRD)](./PRD.md)**: Detailed technical architecture and feature specifications.
 - **[Data Pipeline (Scraper)](./scraper/README.md)**: Deep dive into the DistroWatch scraping engine.
 
 ## 🛠️ Tech Stack
 - **React 19** + **Vite** + **TypeScript**
 - **D3.js** (Professional Data Visualization)
-- **Tailwind CSS 4** (Modern Styling)
-- **Framer Motion** (Fluid UI Transitions)
+- **Tailwind CSS 4** with a token-based design system — see [DESIGN.md](./DESIGN.md)
 - **Azure Static Web Apps** (Cloud Hosting & CI/CD)
 
 ## 🏗️ Development Setup
 
-### 1. Data Pipeline (Optional)
+### Dev container (recommended)
+The repo ships a [Dev Container](https://containers.dev/) (`.devcontainer/`) with Node 24, Python 3.12, and the GitHub CLI. Opening it installs everything for you:
+
+- **VS Code**: install the *Dev Containers* extension, open the folder, and choose **Reopen in Container**.
+- **GitHub Codespaces**: *Code → Create codespace on master*.
+- **CLI**: `npm i -g @devcontainers/cli && devcontainer up --workspace-folder . && devcontainer exec --workspace-folder . npm run dev`
+
+`postCreateCommand` runs `npm ci` and creates `scraper/.venv` with the scraper requirements. Port 5173 is forwarded automatically.
+
+### Manual setup
+Requires Node ≥ 20.19 (see `.nvmrc`) and Python 3.
+
+#### 1. Data Pipeline (Optional)
 ```bash
 cd scraper
 python3 -m venv .venv
@@ -41,7 +53,7 @@ pip install -r requirements.txt
 python3 transform_data.py --input distros_raw.json --output ../public/distros.json
 ```
 
-### 2. Frontend
+#### 2. Frontend
 ```bash
 npm install
 npm run dev

@@ -41,8 +41,8 @@ The application provides **2 distinct high-performance visualization modes**:
 - **Static Asset Strategy**: Data is served from the `public/` directory to enable independent browser caching and reduced initial bundle size.
 
 ## 5. Visual Design
-- **Theme**: Deep Slate (`#0f172a`) background with High-Contrast Cyan (`#06b6d4`) for active paths.
-- **Consistency**: Unified glassmorphism overlays and interactive controls across all visualization modes.
+- **Theme**: Follows [DESIGN.md](./DESIGN.md) — warm off-white background, dark grey text, low-chroma family colours; the selected lineage is drawn in the text colour and everything else recedes.
+- **Consistency**: Flat, hairline-separated panels and plain text controls across all visualization modes. Nothing animates unless the user moves it.
 
 ## 6. Future Roadmap
 - **Community Contributions**: Interface for users to submit relationship corrections.

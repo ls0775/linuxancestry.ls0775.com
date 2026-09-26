@@ -1,15 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
-import { Search, Info, X, Maximize2, Download } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
 import TimelineControls from './TimelineControls';
+import DetailPanel from './DetailPanel';
+import { getVizTheme } from '../utils/theme';
 import { useDistroData, type DistroNode } from '../hooks/useDistroData';
 import {
-    parseDate, getYear, getLogoUrl, getFallbackLogoUrl,
-    getPopularityRank, isPrimaryDistro,
-    HoverTooltip, PopularityBadge, AncestryBreadcrumb,
+    parseDate, getYear,
+    getPopularityRank,
 } from '../utils/distroUtils';
+import { HoverTooltip } from './DistroWidgets';
 
 const CHART_WIDTH = 32000;
 const CHART_HEIGHT = 40000;
@@ -225,11 +225,11 @@ const FamilyTree: React.FC = () => {
         const gZoomEl = svgClone.querySelector('g') as SVGGElement | null;
         if (gZoomEl) gZoomEl.removeAttribute('transform');
 
-        // Dark background
+        const theme = getVizTheme();
         const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         bg.setAttribute('x', String(vx)); bg.setAttribute('y', String(vy));
         bg.setAttribute('width', String(vw)); bg.setAttribute('height', String(vh));
-        bg.setAttribute('fill', '#0f172a');
+        bg.setAttribute('fill', theme.bg);
         svgClone.insertBefore(bg, svgClone.firstChild);
 
         // Font in SVG units = desired screen px / export scale
@@ -247,8 +247,8 @@ const FamilyTree: React.FC = () => {
                 textEl.setAttribute('x', String(CIRCLE_R + 8));
                 textEl.removeAttribute('dy');
                 textEl.setAttribute('dominant-baseline', 'middle');
-                textEl.setAttribute('font-family', 'system-ui, sans-serif');
-                textEl.setAttribute('font-weight', '700');
+                textEl.setAttribute('font-family', theme.font);
+                textEl.setAttribute('font-weight', '400');
             }
         });
 
@@ -257,13 +257,13 @@ const FamilyTree: React.FC = () => {
         titleEl.setAttribute('x', String(Math.round(vx + vw / 2)));
         titleEl.setAttribute('y', String(Math.round(vy + Math.round(20 / es))));
         titleEl.setAttribute('text-anchor', 'middle');
-        titleEl.setAttribute('fill', '#94a3b8');
+        titleEl.setAttribute('fill', theme.muted);
         titleEl.style.fontSize = `${Math.round(18 / es)}px`;
-        titleEl.setAttribute('font-weight', '700');
-        titleEl.setAttribute('font-family', 'system-ui, -apple-system, sans-serif');
+        titleEl.setAttribute('font-weight', '400');
+        titleEl.setAttribute('font-family', theme.font);
         titleEl.textContent = isFiltered
-            ? `${activeHighlightNode!.name} — Linux Distribution Family`
-            : 'Linux Distribution Timeline';
+            ? `${activeHighlightNode!.name} — Linux Ancestry`
+            : 'Linux Ancestry';
         svgClone.appendChild(titleEl);
 
         const xml = new XMLSerializer().serializeToString(svgClone);
@@ -290,6 +290,7 @@ const FamilyTree: React.FC = () => {
         if (width === 0 || height === 0) return;
 
         const margin = { top: 100, right: 100, bottom: 100, left: 100 };
+        const theme = getVizTheme();
 
         if (!groupsRef.current) {
             const svg = d3.select(svgRef.current).attr('width', width).attr('height', height);
@@ -310,14 +311,14 @@ const FamilyTree: React.FC = () => {
                 const labels = gStickyAxis.selectAll<SVGTextElement, number>('text').data(years);
                 labels.enter().append('text')
                     .attr('text-anchor', 'middle')
-                    .attr('fill', '#94a3b8')
+                    .style('font-family', theme.font)
+                    .style('font-weight', '400')
                     .style('pointer-events', 'none')
                     .merge(labels as any)
                     .attr('x', (y: number) => xScale(y) * k + tx)
                     .attr('y', 28)
-                    .style('font-size', (y: number) => (y % 5 === 0 ? '13' : '10') + 'px')
-                    .style('font-weight', (y: number) => y % 5 === 0 ? '700' : '400')
-                    .style('fill', (y: number) => y % 5 === 0 ? '#cbd5e1' : '#475569')
+                    .style('font-size', (y: number) => (y % 5 === 0 ? '12' : '10') + 'px')
+                    .style('fill', (y: number) => y % 5 === 0 ? theme.axisMajor : theme.axis)
                     .style('display', function(y: number) {
                         const screenSpacing = xScale(1992) * k - xScale(1991) * k;
                         if (y % 5 === 0) return screenSpacing >= 8 ? null : 'none';
@@ -363,7 +364,7 @@ const FamilyTree: React.FC = () => {
         // Perform Update
         const { gGrid, gLink, gNode, xScale, treeLayout } = groupsRef.current;
         const duration = 400;
-        const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+        const colorScale = d3.scaleOrdinal<string>(theme.families);
         const search = searchTerm.trim().toLowerCase();
 
         // Popularity rank helper — Linux_Original is rank 0 (always primary)
@@ -373,9 +374,8 @@ const FamilyTree: React.FC = () => {
         const yearsToDraw = d3.range(1991, 2027, 1);
         const gridLines = gGrid.selectAll('line').data(yearsToDraw);
         gridLines.enter().append('line')
-            .attr('stroke', '#1e293b')
-            .attr('stroke-width', (d: any) => d % 5 === 0 ? 8 : 2)
-            .attr('stroke-opacity', (d: any) => d % 5 === 0 ? 0.5 : 0.2)
+            .attr('stroke', (d: any) => d % 5 === 0 ? theme.gridMajor : theme.grid)
+            .attr('stroke-width', (d: any) => d % 5 === 0 ? 4 : 2)
             .merge(gridLines as any)
             .attr('x1', (d: any) => xScale(d)).attr('x2', (d: any) => xScale(d))
             .attr('y1', -200).attr('y2', CHART_HEIGHT + 200);
@@ -483,9 +483,9 @@ const FamilyTree: React.FC = () => {
         linkSelection.enter().append('path').attr('class', 'link-path')
             .attr('fill', 'none').attr('stroke-width', 4).attr('stroke-opacity', 0)
             .merge(linkSelection as any).transition().duration(duration)
-            .attr('stroke', (d: any) => activeHighlightNode && relatedIds.has(d.target.data.id) ? '#facc15' : '#475569')
-            .attr('stroke-opacity', (d: any) => !activeHighlightNode ? 0.6 : (relatedIds.has(d.target.data.id) ? 1 : 0.1))
-            .attr('stroke-width', (d: any) => activeHighlightNode && relatedIds.has(d.target.data.id) ? 16 : 8)
+            .attr('stroke', (d: any) => activeHighlightNode && relatedIds.has(d.target.data.id) ? theme.linkHighlight : theme.link)
+            .attr('stroke-opacity', (d: any) => !activeHighlightNode ? 1 : (relatedIds.has(d.target.data.id) ? 1 : 0.15))
+            .attr('stroke-width', (d: any) => activeHighlightNode && relatedIds.has(d.target.data.id) ? 10 : 6)
             .attr('d', diagonal as any);
 
         const nodeSelection = gNode.selectAll('g.node-group').data(root.descendants(), (d: any) => d.data.id);
@@ -516,34 +516,27 @@ const FamilyTree: React.FC = () => {
             })
             .on('mouseleave', () => setHoverInfo(null));
 
-        nodeEnter.append('circle').attr('r', 24).attr('stroke-width', 8);
+        nodeEnter.append('circle').attr('r', 24).attr('stroke-width', 6);
 
-        // Logo tile — white rounded-rect card matching the detail panel style, hidden until k >= 0.4
-        nodeEnter.append('clipPath')
-            .attr('id', (d: any) => `logo-clip-${d.data.id}`)
-            .append('rect')
-            .attr('x', -48).attr('y', -48)
-            .attr('width', 96).attr('height', 96)
-            .attr('rx', 20).attr('ry', 20);
+        // Logo tile — flat page-coloured square with a hairline, hidden until k >= 0.4
         nodeEnter.append('rect')
             .attr('class', 'node-logo-bg')
             .attr('x', -48).attr('y', -48)
             .attr('width', 96).attr('height', 96)
-            .attr('rx', 20).attr('ry', 20)
-            .attr('fill', 'white')
+            .attr('fill', theme.bg)
+            .attr('stroke', theme.rule)
+            .attr('stroke-width', 2)
             .style('display', 'none')
             .style('pointer-events', 'none');
-        // Image inset 12px each side for clean padding
         nodeEnter.append('image')
             .attr('class', 'node-logo')
             .attr('href', (d: any) => `/logos/${d.data.id}.png`)
             .attr('x', -36).attr('y', -36)
             .attr('width', 72).attr('height', 72)
             .attr('preserveAspectRatio', 'xMidYMid meet')
-            .attr('clip-path', (d: any) => `url(#logo-clip-${d.data.id})`)
             .style('display', 'none')
             .style('pointer-events', 'none');
-        nodeEnter.append('text').attr('text-anchor', 'start').attr('dominant-baseline', 'middle').attr('x', 52).attr('fill', '#e2e8f0').style('pointer-events', 'none');
+        nodeEnter.append('text').attr('text-anchor', 'start').attr('dominant-baseline', 'middle').attr('x', 52).style('pointer-events', 'none');
 
         // Assign single class to all node labels
         nodeSelection.merge(nodeEnter as any).select('text')
@@ -555,21 +548,21 @@ const FamilyTree: React.FC = () => {
 
         nodeUpdate.select('circle')
             .attr('fill', (d: any) => {
-                if (activeHighlightNode && relatedIds.has(d.data.id)) return '#facc15';
-                if (d.data.id === 'Linux_Original') return '#64748b';
-                if (d.data.stop) return '#ef4444';
+                if (activeHighlightNode && relatedIds.has(d.data.id)) return theme.linkHighlight;
+                if (d.data.id === 'Linux_Original') return theme.nodeRoot;
+                if (d.data.stop) return theme.nodeDiscontinued;
                 let family = d;
                 while (family.parent && family.parent.data.id !== 'Linux_Original') { family = family.parent; }
                 return colorScale(family.data.id);
             })
-            .attr('stroke', (d: any) => (selectedNode?.id === d.data.id || (search && activeHighlightNode?.id === d.data.id)) ? '#fff' : 'none')
-            .attr('r', (d: any) => activeHighlightNode && relatedIds.has(d.data.id) ? 32 : 24);
+            .attr('stroke', (d: any) => (selectedNode?.id === d.data.id || (search && activeHighlightNode?.id === d.data.id)) ? theme.bg : 'none')
+            .attr('r', (d: any) => activeHighlightNode && relatedIds.has(d.data.id) ? 30 : 24);
 
         nodeUpdate.select('text')
-            .attr('font-weight', (d: any) => getRank(d) <= 100 ? '900' : '500')
             .attr('fill', (d: any) => {
-                if (d.data.id === 'Linux_Original') return '#ffffff';
-                return activeHighlightNode && relatedIds.has(d.data.id) ? '#facc15' : '#e2e8f0';
+                if (d.data.id === 'Linux_Original') return theme.labelHighlight;
+                if (activeHighlightNode && relatedIds.has(d.data.id)) return theme.labelHighlight;
+                return getRank(d) <= 100 ? theme.text : theme.label;
             })
             .text((d: any) => d.data.name);
 
@@ -614,10 +607,7 @@ const FamilyTree: React.FC = () => {
                 const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
                 return ((rank <= 100 ? 12 : 9) / currentK) + 'px';
             })
-            .style('font-weight', function(d: any) {
-                const rank = d?.data?.id === 'Linux_Original' ? 0 : (d?.data?.popularity ? parseInt(d.data.popularity) : 9999);
-                return rank <= 100 ? '900' : '500';
-            });
+            .style('font-weight', '400');
 
         // Sync logo visibility with current zoom
         gNode.selectAll('.node-logo, .node-logo-bg')
@@ -641,17 +631,18 @@ const FamilyTree: React.FC = () => {
 
     }, [distroData, timelineYear, searchTerm, showAll, selectedNode, currentYear, activeHighlightNode, childrenMap]);
 
-    if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>;
+    if (isLoading) return <p className="p-6 text-muted font-light">Loading…</p>;
 
     return (
-        <div ref={containerRef} className="w-full h-full relative bg-[#0f172a]">
-            <div className="absolute top-4 left-4 z-10 flex flex-col gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <div ref={containerRef} className="w-full h-full relative">
+            <div className="panel absolute top-4 left-4 z-10 w-[26rem] max-w-[calc(100%-2rem)] p-5 flex flex-col gap-4">
+                <div className="flex items-baseline gap-5 text-[0.95rem]">
+                    <div className="relative flex-1">
                         <input
-                            type="text"
-                            placeholder="Search distributions..."
+                            type="search"
+                            className="field"
+                            aria-label="Search distributions"
+                            placeholder="Search distributions"
                             value={searchTerm}
                             onChange={(e) => {
                                 setSearchTerm(e.target.value);
@@ -680,67 +671,35 @@ const FamilyTree: React.FC = () => {
                                     setSelectedSuggestionIndex(-1);
                                 }
                             }}
-                            className="pl-10 pr-4 py-2 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 w-64"
                         />
                         {showSuggestions && suggestions.length > 0 && (
-                            <div className="absolute top-full left-0 mt-1 w-64 bg-slate-900 border border-slate-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
+                            <ul className="panel absolute top-full left-0 right-0 z-50 list-none m-0 p-0" role="listbox">
                                 {suggestions.map((s, idx) => (
-                                    <button
-                                        key={s.id}
-                                        onMouseDown={() => { setSearchTerm(s.name); setShowSuggestions(false); }}
-                                        className={`w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-slate-700/60 flex items-center justify-between gap-2 transition-colors ${idx === selectedSuggestionIndex ? 'bg-slate-700/80 text-cyan-400 font-semibold' : ''}`}
-                                    >
-                                        <span className="truncate">{s.name}</span>
-                                        <span className="text-xs text-slate-500 shrink-0">{s.start?.slice(0, 4)}</span>
-                                    </button>
+                                    <li key={s.id} role="option" aria-selected={idx === selectedSuggestionIndex}>
+                                        <button
+                                            onMouseDown={() => { setSearchTerm(s.name); setShowSuggestions(false); }}
+                                            className={`w-full text-left px-3 py-1.5 flex items-baseline justify-between gap-3 border-t border-rule first:border-t-0 ${idx === selectedSuggestionIndex ? 'text-text underline decoration-1 underline-offset-[0.2em]' : 'text-muted hover:text-text'}`}
+                                        >
+                                            <span className="truncate">{s.name}</span>
+                                            <span className="text-[0.8rem] font-light shrink-0 tabular-nums">{s.start?.slice(0, 4)}</span>
+                                        </button>
+                                    </li>
                                 ))}
-                            </div>
+                            </ul>
                         )}
                     </div>
-                    <div className="flex bg-slate-800/90 backdrop-blur-md rounded-xl border border-slate-700/50 overflow-hidden">
-                        <button onClick={() => setShowAll(false)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${!showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{`ACTIVE ${timelineYear}`}</button>
-                        <button onClick={() => setShowAll(true)} className={`px-6 py-3 rounded-xl text-xs font-black transition-all ${showAll ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>SHOW ALL</button>
-                        <button onClick={handleReset} className="px-6 py-3 rounded-xl text-xs font-black text-rose-500 hover:bg-rose-500/10 transition-all border-l border-slate-700/50">RESET</button>
-                    </div>
+                    <button onClick={() => setShowAll(false)} className="textbtn" aria-pressed={!showAll}>Active</button>
+                    <button onClick={() => setShowAll(true)} className="textbtn" aria-pressed={showAll}>All</button>
+                    <button onClick={handleReset} className="textbtn">Reset</button>
                 </div>
-                <div className="w-[30rem]"><TimelineControls minYear={1991} maxYear={currentYear} currentYear={timelineYear} onYearChange={setTimelineYear} stats={stats} /></div>
+                <TimelineControls minYear={1991} maxYear={currentYear} currentYear={timelineYear} onYearChange={setTimelineYear} stats={stats} className="pt-4 border-t border-rule" />
             </div>
             <svg ref={svgRef} className="w-full h-full" />
-            <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
-                <button onClick={fitAll} title="Fit all" className="p-3 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-slate-400 hover:text-white transition-all shadow-lg">
-                    <Maximize2 className="w-5 h-5" />
-                </button>
-                <button onClick={exportImage} title="Export SVG" className="p-3 bg-slate-800/90 backdrop-blur-md border border-slate-700/50 rounded-xl text-slate-400 hover:text-cyan-400 transition-all shadow-lg">
-                    <Download className="w-5 h-5" />
-                </button>
+            <div className="absolute top-4 right-4 z-10 flex items-baseline gap-5 text-[0.95rem]">
+                <button onClick={fitAll} className="textbtn">Fit</button>
+                <button onClick={exportImage} className="textbtn">Export SVG</button>
             </div>
-            <AnimatePresence>
-                {selectedNode && (
-                    <motion.div initial={{ x: 400, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 400, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="absolute bottom-4 right-4 w-96 bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 rounded-3xl shadow-2xl overflow-hidden z-20">
-                        <div className="p-8">
-                            <button onClick={() => setSelectedNode(null)} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-                            <div className="flex items-start gap-6 mb-8">
-                                <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <h2 className="text-2xl font-black text-white leading-tight">{selectedNode.name}</h2>
-                                        <PopularityBadge node={selectedNode} />
-                                    </div>
-                                    <p className="text-xs text-slate-400 font-medium uppercase mt-1">{selectedNode.parent ? `Ancestor: ${selectedNode.parent}` : 'Origin Project'}</p>
-                                    <AncestryBreadcrumb path={ancestryPath} />
-                                </div>
-                                <div className="bg-white p-4 rounded-3xl shadow-2xl w-24 h-24 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                                    <img src={getLogoUrl(selectedNode)} alt="" className="w-20 h-20 object-contain z-10" onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = getFallbackLogoUrl(selectedNode); }} />
-                                </div>
-                            </div>
-                            <div className="space-y-6 mb-8">
-                                <div className="flex gap-4 text-sm"><div className="bg-slate-800 p-2 rounded-lg text-slate-400 italic">Born: {selectedNode.start || 'Unknown'}</div>{selectedNode.stop && <div className="bg-rose-500/20 p-2 rounded-lg text-rose-400 italic">Retired: {selectedNode.stop}</div>}</div>
-                                <div className="text-sm text-slate-300 leading-relaxed max-h-48 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700">{selectedNode.description || 'Historical distribution details are currently being indexed.'}</div>
-                            </div>
-                            <a href={`https://distrowatch.com/table.php?distribution=${selectedNode.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-4 bg-cyan-500 hover:bg-cyan-400 text-white rounded-2xl font-black text-xs tracking-widest transition-all shadow-lg shadow-cyan-500/25">VIEW ON DISTROWATCH <Info className="w-4 h-4" /></a>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {selectedNode && <DetailPanel node={selectedNode} ancestryPath={ancestryPath} onClose={() => setSelectedNode(null)} />}
             {hoverInfo && <HoverTooltip node={hoverInfo.node} x={hoverInfo.x} y={hoverInfo.y} />}
         </div>
     );
