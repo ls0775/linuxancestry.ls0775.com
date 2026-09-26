@@ -16,9 +16,10 @@ const RADIUS = 2500;
 const PRIMARY_RANK = 50;
 const fitScaleFor = (w: number, h: number): number => Math.min((w - 80) / (RADIUS * 2), (h - 80) / (RADIUS * 2));
 const NODE_R = 6;
-const LABEL_OFFSET = 10;
-const LOGO_TILE = 14;
-const LOGO_IMG = 11;
+const LABEL_OFFSET = 12;
+// LOGO_IMG ≈ LOGO_TILE / √2 so the whole square logo sits inside the disc.
+const LOGO_TILE = 18;
+const LOGO_IMG = 12;
 const PRIMARY_FONT = 13;
 const SECONDARY_FONT = 9;
 /** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
@@ -122,7 +123,7 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             const svg = d3.select(svgRef.current).style('user-select', 'none');
             svg.selectAll('*').remove();
             svg.append('defs').append('clipPath').attr('id', 'radial-logo-clip')
-                .append('circle').attr('r', LOGO_IMG / 2);
+                .append('circle').attr('r', LOGO_TILE / 2);
             const gZoom = svg.append('g');
 
             const radiusScale = d3.scaleLinear().domain([MIN_YEAR, maxYear + 1]).range([0, RADIUS - 100]);
@@ -281,7 +282,7 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             .attr('class', 'node-logo')
             .attr('href', d => `/logos/${d.data.id}.png`)
             .attr('x', -LOGO_IMG / 2).attr('y', -LOGO_IMG / 2).attr('width', LOGO_IMG).attr('height', LOGO_IMG)
-            .attr('preserveAspectRatio', 'xMidYMid slice')
+            .attr('preserveAspectRatio', 'xMidYMid meet')
             .attr('clip-path', 'url(#radial-logo-clip)')
             .style('display', 'none').style('pointer-events', 'none');
         nodeEnter.append('text').attr('class', 'node-label').attr('dy', '0.31em')

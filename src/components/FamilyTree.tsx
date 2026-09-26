@@ -18,13 +18,14 @@ const PRIMARY_RANK = 50;
 const FAMILY_GAP = 1200;
 const fitScaleFor = (w: number, h: number): number => Math.min((w - 80) / CHART_WIDTH, (h - 80) / CHART_HEIGHT);
 const NODE_R = 24;
-const LABEL_OFFSET = 52;
+const LABEL_OFFSET = 64;
 const PRIMARY_FONT = 12;
 const SECONDARY_FONT = 9;
 /** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
 const MIN_DOT_PX = 2.5;
 const RING_PX = 1.25;
-const LOGO_TILE = 96;
+// LOGO_IMG ≈ LOGO_TILE / √2 so the whole square logo sits inside the disc.
+const LOGO_TILE = 112;
 const LOGO_IMG = 76;
 const PANEL_WIDTH_PX = 22 * 16 + 32;
 const FIT_PAD_PX = 40;
@@ -154,7 +155,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             svg.selectAll('*').remove();
             // Shared circular clip for logo images (user-space, centred on each node's origin).
             svg.append('defs').append('clipPath').attr('id', 'timeline-logo-clip')
-                .append('circle').attr('r', LOGO_IMG / 2);
+                .append('circle').attr('r', LOGO_TILE / 2);
             const gZoom = svg.append('g');
             const gStickyAxis = svg.append('g').attr('class', 'sticky-axis').attr('pointer-events', 'none');
 
@@ -360,7 +361,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             .attr('class', 'node-logo')
             .attr('href', d => `/logos/${d.data.id}.png`)
             .attr('x', -LOGO_IMG / 2).attr('y', -LOGO_IMG / 2).attr('width', LOGO_IMG).attr('height', LOGO_IMG)
-            .attr('preserveAspectRatio', 'xMidYMid slice')
+            .attr('preserveAspectRatio', 'xMidYMid meet')
             .attr('clip-path', 'url(#timeline-logo-clip)')
             .style('display', 'none').style('pointer-events', 'none');
         nodeEnter.append('text')
