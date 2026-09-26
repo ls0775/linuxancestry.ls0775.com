@@ -13,6 +13,15 @@ export interface LabelCandidate {
     priority: number;
 }
 
+/**
+ * Highest popularity rank whose label may be shown at a given zoom, where
+ * `zoomFactor` is the current scale relative to the fit-all scale. At 1× only
+ * the top `base` names appear; the limit grows quadratically so that every
+ * name becomes eligible after roughly a 5× zoom.
+ */
+export const rankLimitForZoom = (zoomFactor: number, base: number): number =>
+    Math.floor(base * Math.max(1, zoomFactor) ** 2);
+
 /** Rough on-screen width of a label at the given font size. */
 export const estimateTextWidth = (text: string, fontPx: number): number => text.length * fontPx * 0.56;
 

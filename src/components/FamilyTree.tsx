@@ -7,15 +7,16 @@ import { getVizTheme } from '../utils/theme';
 import { getYear, getPopularityRank } from '../utils/distroUtils';
 import { buildHierarchy, getFamilyId, MIN_YEAR, ROOT_ID } from '../utils/lineage';
 import { addTitle, cloneForExport, downloadSvg, slugify } from '../utils/svgExport';
-import { cullLabels, estimateTextWidth, frameThrottle, type LabelCandidate } from '../utils/labelCulling';
+import { cullLabels, estimateTextWidth, frameThrottle, rankLimitForZoom, type LabelCandidate } from '../utils/labelCulling';
 import { useSvgSize } from '../hooks/useSvgSize';
 import { useTreeState } from '../hooks/useTreeState';
 import type { DistroNode } from '../hooks/useDistroData';
 
 const CHART_WIDTH = 32000;
 const CHART_HEIGHT = 40000;
-const PRIMARY_RANK = 100;
+const PRIMARY_RANK = 50;
 const FAMILY_GAP = 1200;
+const fitScaleFor = (w: number, h: number): number => Math.min((w - 80) / CHART_WIDTH, (h - 80) / CHART_HEIGHT);
 const NODE_R = 24;
 const LABEL_OFFSET = 52;
 const PRIMARY_FONT = 12;
@@ -71,7 +72,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
         if (!svgRef.current || !containerRef.current || !zoomRef.current) return;
         const w = containerRef.current.clientWidth;
         const h = containerRef.current.clientHeight;
-        const scale = Math.min((w - 80) / CHART_WIDTH, (h - 80) / CHART_HEIGHT);
+        const scale = fitScaleFor(w, h);
         d3.select(svgRef.current).transition().duration(750).call(
             zoomRef.current.transform,
             d3.zoomIdentity.translate((w - CHART_WIDTH * scale) / 2, (h - CHART_HEIGHT * scale) / 2).scale(scale),
@@ -194,6 +195,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
                 const k = t.k;
                 const viewport = { width: containerRef.current.clientWidth, height: containerRef.current.clientHeight };
                 const highlightedNow = highlightRef.current;
+                const rankLimit = rankLimitForZoom(k / fitScaleFor(viewport.width, viewport.height), PRIMARY_RANK);
 
                 gNode.selectAll<SVGCircleElement, HNode>('circle.node-dot')
                     .attr('r', d => dotRadius(k, highlightedNow(d.data.id)));
@@ -206,6 +208,10 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
                     const font = fontFor(d);
                     this.style.fontSize = `${font / k}px`;
                     const lit = highlightedNow(d.data.id);
+                    if (!lit && rankOf(d) > rankLimit) {
+                        this.style.display = 'none';
+                        return;
+                    }
                     const w = estimateTextWidth(d.data.name, font);
                     candidates.push({
                         el: this,
@@ -227,7 +233,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             zoomRef.current = zoom;
             svg.call(zoom).on('click', () => setSelectedNode(null));
 
-            const initScale = Math.min((width - 80) / CHART_WIDTH, (height - 80) / CHART_HEIGHT);
+            const initScale = fitScaleFor(width, height);
             const initTransform = d3.zoomIdentity
                 .translate((width - CHART_WIDTH * initScale) / 2, (height - CHART_HEIGHT * initScale) / 2)
                 .scale(initScale);

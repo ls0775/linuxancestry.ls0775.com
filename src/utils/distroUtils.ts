@@ -52,7 +52,7 @@ export function getPopularityRank(node: DistroNode): number {
     return node.popularity ? parseInt(node.popularity) : 9999;
 }
 
-/** True if this distro is in the top-100 by DistroWatch page hits. */
+/** True if this distro is in the top-50 by DistroWatch page hits. */
 export function isPrimaryDistro(node: DistroNode): boolean {
-    return getPopularityRank(node) <= 100;
+    return getPopularityRank(node) <= 50;
 }

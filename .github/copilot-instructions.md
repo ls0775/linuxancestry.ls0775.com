@@ -84,7 +84,9 @@ Both components initialize SVG groups once into a `groupsRef` (on the first rend
 
 **Logos:** `getLogoUrl()` returns the local `/logos/{id}.png`; `getFallbackLogoUrl()` (used on `onError`) returns `node.icon` or a constructed DistroWatch URL. The CSP `img-src` allows `distrowatch.com` for that fallback only.
 
-**Accessibility:** node groups carry `role="button"`, `aria-label` and `tabindex` (0 for top-100 by popularity, -1 otherwise); Enter/Space selects. Keep the search combobox ARIA intact.
+**Labels (both views):** `applyZoomLevel` (stored on `groupsRef`, run on zoom and after each data update) sizes dots/hit targets and culls labels via `src/utils/labelCulling.ts`. At fit-all scale only the top-50 (`PRIMARY_RANK`) names are eligible; `rankLimitForZoom` widens that quadratically with zoom so all names are eligible after ~5×. Eligible labels are then greedily placed (highlighted > primary > secondary) and any that would overlap are hidden. Transparent `circle.node-hit` and `path.link-hit` shapes provide the click targets; export strips them.
+
+**Accessibility:** node groups carry `role="button"`, `aria-label` and `tabindex` (0 for top-50 by popularity, -1 otherwise); Enter/Space selects. Keep the search combobox ARIA intact.
 
 **Hosting config:** `public/staticwebapp.config.json` (copied into `dist/`) holds the SPA fallback, cache headers and CSP. Production needs no `unsafe-eval`/inline scripts — do not loosen the policy.
 

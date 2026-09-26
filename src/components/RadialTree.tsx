@@ -7,13 +7,14 @@ import { getVizTheme } from '../utils/theme';
 import { getYear, getPopularityRank } from '../utils/distroUtils';
 import { buildHierarchy, getFamilyId, MIN_YEAR, ROOT_ID } from '../utils/lineage';
 import { cloneForExport, downloadSvg, slugify } from '../utils/svgExport';
-import { cullLabels, estimateTextWidth, frameThrottle, rotatedLabelBox, type LabelCandidate } from '../utils/labelCulling';
+import { cullLabels, estimateTextWidth, frameThrottle, rankLimitForZoom, rotatedLabelBox, type LabelCandidate } from '../utils/labelCulling';
 import { useSvgSize } from '../hooks/useSvgSize';
 import { useTreeState } from '../hooks/useTreeState';
 import type { DistroNode } from '../hooks/useDistroData';
 
 const RADIUS = 2500;
-const PRIMARY_RANK = 100;
+const PRIMARY_RANK = 50;
+const fitScaleFor = (w: number, h: number): number => Math.min((w - 80) / (RADIUS * 2), (h - 80) / (RADIUS * 2));
 const NODE_R = 6;
 const LABEL_OFFSET = 8;
 const PRIMARY_FONT = 13;
@@ -68,7 +69,7 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
         if (!svgRef.current || !containerRef.current || !zoomRef.current) return;
         const w = containerRef.current.clientWidth;
         const h = containerRef.current.clientHeight;
-        const scale = Math.min((w - 80) / (RADIUS * 2), (h - 80) / (RADIUS * 2));
+        const scale = fitScaleFor(w, h);
         d3.select(svgRef.current).transition().duration(750).call(
             zoomRef.current.transform,
             d3.zoomIdentity.translate(w / 2, h / 2).scale(scale),
@@ -139,6 +140,7 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
                 const k = t.k;
                 const viewport = { width: containerRef.current.clientWidth, height: containerRef.current.clientHeight };
                 const highlightedNow = highlightRef.current;
+                const rankLimit = rankLimitForZoom(k / fitScaleFor(viewport.width, viewport.height), PRIMARY_RANK);
 
                 gNode.selectAll<SVGCircleElement, HNode>('circle.node-dot')
                     .attr('r', d => Math.max(highlightedNow(d.data.id) ? NODE_R * 1.33 : NODE_R, MIN_DOT_PX / k));
@@ -151,6 +153,10 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
                     const font = fontFor(d);
                     this.style.fontSize = `${font / k}px`;
                     const lit = highlightedNow(d.data.id);
+                    if (!lit && rankOf(d) > rankLimit) {
+                        this.style.display = 'none';
+                        return;
+                    }
                     const c = toCartesian(d);
                     const angle = d.x - Math.PI / 2;
                     candidates.push({
@@ -172,7 +178,7 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             zoomRef.current = zoom;
             svg.call(zoom).on('click', () => setSelectedNode(null));
 
-            const initScale = Math.min((width - 80) / (RADIUS * 2), (height - 80) / (RADIUS * 2));
+            const initScale = fitScaleFor(width, height);
             svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(initScale));
 
             const treeLayout = d3.tree<DistroNode>()

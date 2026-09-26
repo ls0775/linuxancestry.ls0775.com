@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cullLabels, estimateTextWidth, rotatedLabelBox, type LabelCandidate } from '../labelCulling';
+import { cullLabels, estimateTextWidth, rankLimitForZoom, rotatedLabelBox, type LabelCandidate } from '../labelCulling';
 
 const fakeText = () => ({ style: { display: '' } }) as unknown as SVGTextElement;
 
@@ -65,5 +65,17 @@ describe('estimateTextWidth', () => {
     it('scales with length and font size', () => {
         expect(estimateTextWidth('Ubuntu', 12)).toBeGreaterThan(estimateTextWidth('Ubuntu', 9));
         expect(estimateTextWidth('Ubuntu Studio', 12)).toBeGreaterThan(estimateTextWidth('Ubuntu', 12));
+    });
+});
+
+describe('rankLimitForZoom', () => {
+    it('shows only the base set at or below fit scale', () => {
+        expect(rankLimitForZoom(1, 50)).toBe(50);
+        expect(rankLimitForZoom(0.5, 50)).toBe(50);
+    });
+
+    it('grows quadratically as the user zooms in', () => {
+        expect(rankLimitForZoom(2, 50)).toBe(200);
+        expect(rankLimitForZoom(5, 50)).toBe(1250);
     });
 });
