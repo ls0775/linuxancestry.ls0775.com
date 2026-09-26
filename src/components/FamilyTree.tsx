@@ -23,6 +23,9 @@ const PRIMARY_FONT = 12;
 const SECONDARY_FONT = 9;
 /** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
 const MIN_DOT_PX = 2.5;
+const PANEL_WIDTH_PX = 22 * 16 + 32;
+const FIT_PAD_PX = 40;
+const MAX_FIT_SCALE = 0.6;
 const HIT_PX = 12;
 const LINK_HIT_PX = 10;
 
@@ -141,14 +144,22 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
         downloadSvg(clone, `linux-ancestry-${isFiltered ? slugify(activeHighlightNode!.name) : 'full'}.svg`);
     }, [searchTerm, activeHighlightNode]);
 
-    const zoomToNode = useCallback((d: HNode, minScale: number) => {
+    // Fit a canvas-space box into the viewport, keeping the detail panel clear when it is open.
+    const fitToBox = useCallback((box: { minX: number; maxX: number; minY: number; maxY: number }, panelOpen: boolean) => {
         if (!svgRef.current || !containerRef.current || !zoomRef.current) return;
         const w = containerRef.current.clientWidth;
         const h = containerRef.current.clientHeight;
-        const k = Math.max(d3.zoomTransform(svgRef.current).k, minScale);
-        d3.select(svgRef.current).transition().duration(600).call(
+        const rightInset = panelOpen && w > PANEL_WIDTH_PX * 2 ? PANEL_WIDTH_PX : 0;
+        const availW = w - rightInset - FIT_PAD_PX * 2;
+        const availH = h - FIT_PAD_PX * 2;
+        const boxW = Math.max(box.maxX - box.minX, 1);
+        const boxH = Math.max(box.maxY - box.minY, 1);
+        const k = Math.min(availW / boxW, availH / boxH, MAX_FIT_SCALE);
+        const cx = (box.minX + box.maxX) / 2;
+        const cy = (box.minY + box.maxY) / 2;
+        d3.select(svgRef.current).transition().duration(750).call(
             zoomRef.current.transform,
-            d3.zoomIdentity.translate(w / 2 - d.x * k, h / 2 - d.y * k).scale(k),
+            d3.zoomIdentity.translate(FIT_PAD_PX + availW / 2 - cx * k, FIT_PAD_PX + availH / 2 - cy * k).scale(k),
         );
     }, []);
 
@@ -295,10 +306,19 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             node.x = xScale(getYear(node.data.start));
         }
 
+        // When a lineage is highlighted, re-lay it out over the full canvas height so the
+        // selected family flares open; everything else stays put, faded, as context.
+        const inLineage = (d: HNode) => d.data.id === ROOT_ID || !!relatedIds?.has(d.data.id);
+        if (activeHighlightNode && relatedIds) {
+            const sub = d3.hierarchy<HNode>(root, d => d.children?.filter(inLineage));
+            d3.tree<HNode>().size([CHART_HEIGHT, CHART_WIDTH]).separation(() => 1)(sub);
+            // The layout's first axis is vertical here (size is [height, width]).
+            sub.each(s => { s.data.y = s.x ?? s.data.y; });
+        }
+
         const select = (d: HNode) => {
             if (d.data.id === ROOT_ID) return;
             setSelectedNode(d.data);
-            zoomToNode(d, 0.25);
         };
 
         const diagonal = d3.linkHorizontal<HLink, HNode>().x(d => d.x).y(d => d.y);
@@ -389,22 +409,27 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
 
         applyZoomLevel();
 
-        // Pan to a newly highlighted node.
+        // Fit the highlighted lineage when it changes; return to the full view when it clears.
         const newHighlightId = activeHighlightNode?.id ?? null;
-        if (newHighlightId && newHighlightId !== prevHighlightIdRef.current) {
-            const target = root.descendants().find(d => d.data.id === newHighlightId);
-            if (target && svgRef.current && containerRef.current && zoomRef.current) {
-                const w = containerRef.current.clientWidth;
-                const h = containerRef.current.clientHeight;
-                const scale = 0.3;
-                d3.select(svgRef.current).transition().duration(750).call(
-                    zoomRef.current.transform,
-                    d3.zoomIdentity.translate(w / 2 - target.x * scale, h / 2 - target.y * scale).scale(scale),
-                );
+        if (newHighlightId !== prevHighlightIdRef.current) {
+            if (newHighlightId && relatedIds) {
+                const lineage = root.descendants().filter(d => d.data.id !== ROOT_ID && relatedIds.has(d.data.id));
+                if (lineage.length) {
+                    // Leave room for the label to the right of each node.
+                    const labelW = Math.max(...lineage.map(d => estimateTextWidth(d.data.name, PRIMARY_FONT))) / 0.3;
+                    fitToBox({
+                        minX: Math.min(...lineage.map(d => d.x)),
+                        maxX: Math.max(...lineage.map(d => d.x)) + LABEL_OFFSET + labelW,
+                        minY: Math.min(...lineage.map(d => d.y)),
+                        maxY: Math.max(...lineage.map(d => d.y)),
+                    }, !!selectedNode);
+                }
+            } else if (prevHighlightIdRef.current) {
+                fitAll();
             }
         }
         prevHighlightIdRef.current = newHighlightId;
-    }, [data, visibleNodes, activeHighlightNode, relatedIds, maxYear, setSelectedNode, setHoverInfo, zoomToNode]);
+    }, [data, visibleNodes, activeHighlightNode, relatedIds, maxYear, selectedNode, setSelectedNode, setHoverInfo, fitToBox, fitAll]);
 
     return (
         <div ref={containerRef} className="w-full h-full relative">

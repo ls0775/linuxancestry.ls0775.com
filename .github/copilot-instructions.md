@@ -86,6 +86,8 @@ Both components initialize SVG groups once into a `groupsRef` (on the first rend
 
 **Labels (both views):** `applyZoomLevel` (stored on `groupsRef`, run on zoom and after each data update) sizes dots/hit targets and culls labels via `src/utils/labelCulling.ts`. At fit-all scale only the top-50 (`PRIMARY_RANK`) names are eligible; `rankLimitForZoom` widens that quadratically with zoom so all names are eligible after ~5×. Eligible labels are then greedily placed (highlighted > primary > secondary) and any that would overlap are hidden. Transparent `circle.node-hit` and `path.link-hit` shapes provide the click targets; export strips them.
 
+**Selection in the timeline:** when a lineage is highlighted (click or exact search match) `FamilyTree` re-lays out just the lineage nodes over the full canvas height (`d3.tree` on a filtered sub-hierarchy) and calls `fitToBox` so the family fills the viewport left of the detail panel; other nodes stay in place at 0.1 opacity. Clearing the selection (Escape, Reset, panel close) calls `fitAll`.
+
 **Accessibility:** node groups carry `role="button"`, `aria-label` and `tabindex` (0 for top-50 by popularity, -1 otherwise); Enter/Space selects. Keep the search combobox ARIA intact.
 
 **Hosting config:** `public/staticwebapp.config.json` (copied into `dist/`) holds the SPA fallback, cache headers and CSP. Production needs no `unsafe-eval`/inline scripts — do not loosen the policy.
