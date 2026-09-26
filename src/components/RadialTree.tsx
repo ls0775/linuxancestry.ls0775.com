@@ -6,7 +6,7 @@ import { HoverTooltip } from './DistroWidgets';
 import { getVizTheme } from '../utils/theme';
 import { getYear, getPopularityRank } from '../utils/distroUtils';
 import { buildHierarchy, getFamilyId, MIN_YEAR, ROOT_ID } from '../utils/lineage';
-import { cloneForExport, downloadSvg, slugify } from '../utils/svgExport';
+import { dateStamp, exportViewport, slugify } from '../utils/svgExport';
 import { cullLabels, estimateTextWidth, frameThrottle, rankLimitForZoom, rotatedLabelBox, type LabelCandidate } from '../utils/labelCulling';
 import { useSvgSize } from '../hooks/useSvgSize';
 import { useTreeState } from '../hooks/useTreeState';
@@ -21,6 +21,7 @@ const PRIMARY_FONT = 13;
 const SECONDARY_FONT = 9;
 /** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
 const MIN_DOT_PX = 3.5;
+const PANEL_WIDTH_PX = 22 * 16 + 32;
 const HIT_PX = 11;
 const LINK_HIT_PX = 10;
 
@@ -58,7 +59,7 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
 
     const state = useTreeState(data);
     const {
-        currentYear, searchTerm, selectedNode, setSelectedNode,
+        currentYear, selectedNode, setSelectedNode,
         activeHighlightNode, relatedIds, visibleNodes, hoverInfo, setHoverInfo, ancestryPath,
     } = state;
     const maxYear = currentYear + 1;
@@ -89,30 +90,21 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
     }, []);
 
     const exportImage = useCallback(() => {
-        if (!svgRef.current) return;
-        const isFiltered = !!(searchTerm.trim() && activeHighlightNode);
-        const PAD = 200;
-        const size = (RADIUS + PAD) * 2;
-        const frame = { x: -RADIUS - PAD, y: -RADIUS - PAD, width: size, height: size, scale: 3520 / size };
-
-        const clone = cloneForExport(svgRef.current, frame);
-        clone.querySelector('g')?.removeAttribute('transform');
-        clone.querySelectorAll('.node-hit, .link-hit').forEach(el => el.remove());
-        clone.querySelectorAll('circle.node-dot').forEach(c => c.setAttribute('r', String(NODE_R)));
-
-        const theme = getVizTheme();
-        const px = (n: number) => `${Math.round(n / frame.scale)}px`;
-        clone.querySelectorAll<SVGTextElement>('text.node-label').forEach(t => {
-            t.style.fontSize = px(10);
-            t.style.display = '';
-            t.setAttribute('font-family', theme.font);
+        if (!svgRef.current || !containerRef.current) return;
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        const panelOpen = !!selectedNode && w > PANEL_WIDTH_PX * 2;
+        const subject = activeHighlightNode?.name;
+        exportViewport(svgRef.current, {
+            width: w,
+            height: h,
+            cropRight: panelOpen ? PANEL_WIDTH_PX : 0,
+            title: subject ? `${subject} lineage — Linux Ancestry` : 'Linux Ancestry — radial',
+            subtitle: `${visibleNodes.length.toLocaleString()} distributions${subject ? `, ${visibleNodes.filter(n => relatedIds?.has(n.id)).length} in lineage` : ''} · radius encodes founding year · ${dateStamp()}`,
+            filename: `linux-ancestry-radial-${subject ? slugify(subject) : 'view'}-${dateStamp()}.svg`,
+            stripSelectors: ['.node-hit', '.link-hit'],
         });
-        clone.querySelectorAll<SVGTextElement>('text.year-label').forEach(t => {
-            t.style.fontSize = px(12);
-            t.setAttribute('font-family', theme.font);
-        });
-        downloadSvg(clone, `linux-ancestry-${isFiltered ? slugify(activeHighlightNode!.name) : 'radial-full'}.svg`);
-    }, [searchTerm, activeHighlightNode]);
+    }, [selectedNode, activeHighlightNode, relatedIds, visibleNodes]);
 
     // Initialise once, then enter/update/exit on the persisted groups.
     useEffect(() => {

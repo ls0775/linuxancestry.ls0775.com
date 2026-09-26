@@ -45,7 +45,7 @@ The app is a single-page React 19 + Vite + TypeScript app that visualizes ~1,100
 - `src/hooks/useTreeState.ts` — search term, selection, Active/All, timeline year, hover; derives `suggestions`, `activeHighlightNode`, `relatedIds`, `ancestryPath`, `visibleNodes`, `stats`, `reset`. Also owns the Escape handler (ignored while focus is in a form control).
 - `src/utils/lineage.ts` — pure functions: `buildIndex`, `filterByTimeline` (the single definition of "existed in year Y"), `getAncestryPath`, `getRelatedIds`, `computeStats`, `buildHierarchy` (stratify under the virtual root), `getFamilyId`, plus `MIN_YEAR` and `ROOT_ID`.
 - `src/components/TreeToolbar.tsx` — the search/filter panel and Fit / Export SVG buttons; `SearchBox.tsx` — ARIA combobox.
-- `src/utils/svgExport.ts` — `cloneForExport`, `addTitle`, `downloadSvg`, `slugify`.
+- `src/utils/svgExport.ts` — `exportViewport` (what-you-see export: keeps the live zoom transform, label culling and highlight state, crops the area under an open detail panel, adds a footer with title/subtitle/credit), `downloadSvg`, `slugify`, `dateStamp`.
 - `src/hooks/useSvgSize.ts` — keeps the SVG width/height in sync with its container (ResizeObserver).
 
 **Two visualization components**, both following the same internal pattern:

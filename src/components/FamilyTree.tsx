@@ -6,7 +6,7 @@ import { HoverTooltip } from './DistroWidgets';
 import { getVizTheme } from '../utils/theme';
 import { getYear, getPopularityRank } from '../utils/distroUtils';
 import { buildHierarchy, getFamilyId, MIN_YEAR, ROOT_ID } from '../utils/lineage';
-import { addTitle, cloneForExport, downloadSvg, slugify } from '../utils/svgExport';
+import { dateStamp, exportViewport, slugify } from '../utils/svgExport';
 import { cullLabels, estimateTextWidth, frameThrottle, rankLimitForZoom, type LabelCandidate } from '../utils/labelCulling';
 import { useSvgSize } from '../hooks/useSvgSize';
 import { useTreeState } from '../hooks/useTreeState';
@@ -63,7 +63,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
 
     const state = useTreeState(data);
     const {
-        currentYear, timelineYear, searchTerm, selectedNode, setSelectedNode,
+        currentYear, timelineYear, selectedNode, setSelectedNode,
         activeHighlightNode, relatedIds, visibleNodes, hoverInfo, setHoverInfo, ancestryPath,
     } = state;
     // Seeded with the initial year so the view only pans when the user scrubs the slider.
@@ -99,50 +99,23 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
     }, [timelineYear]);
 
     const exportImage = useCallback(() => {
-        if (!svgRef.current || !groupsRef.current) return;
-        const isFiltered = !!(searchTerm.trim() && activeHighlightNode);
-        const nodes = groupsRef.current.gNode.selectAll<SVGGElement, HNode>('g.node-group').data();
-
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (const d of nodes) {
-            minX = Math.min(minX, d.x); maxX = Math.max(maxX, d.x);
-            minY = Math.min(minY, d.y); maxY = Math.max(maxY, d.y);
-        }
-
-        const PAD = 600;
-        const x = isFiltered ? Math.max(0, minX - PAD) : 0;
-        const y = isFiltered ? Math.max(-200, minY - PAD) : -200;
-        const width = isFiltered ? maxX - minX + PAD * 2 : CHART_WIDTH;
-        const height = isFiltered ? maxY - minY + PAD * 2 : CHART_HEIGHT + 400;
-
-        // Scale so every label gets at least DESIRED_PX_PER_NODE of vertical space.
-        const DESIRED_PX_PER_NODE = 22;
-        const DESIRED_FONT_PX = 13;
-        const scale = Math.max(3520 / width, (nodes.length * DESIRED_PX_PER_NODE) / height);
-        const frame = { x, y, width, height, scale };
-
-        const clone = cloneForExport(svgRef.current, frame);
-        clone.querySelector('g')?.removeAttribute('transform');
-        clone.querySelector('g.sticky-axis')?.remove();
-        clone.querySelectorAll('.node-hit, .link-hit').forEach(el => el.remove());
-        clone.querySelectorAll('circle.node-dot').forEach(c => c.setAttribute('r', String(NODE_R)));
-
-        const theme = getVizTheme();
-        const labelFont = Math.round(DESIRED_FONT_PX / scale);
-        clone.querySelectorAll<SVGTextElement>('text.node-label').forEach(t => {
-            t.style.fontSize = `${labelFont}px`;
-            t.style.display = '';
-            t.setAttribute('text-anchor', 'start');
-            t.setAttribute('x', String(NODE_R + 8));
-            t.removeAttribute('dy');
-            t.setAttribute('dominant-baseline', 'middle');
-            t.setAttribute('font-family', theme.font);
-            t.setAttribute('font-weight', '400');
+        if (!svgRef.current || !containerRef.current) return;
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        const panelOpen = !!selectedNode && w > PANEL_WIDTH_PX * 2;
+        const subject = activeHighlightNode?.name;
+        const k = d3.zoomTransform(svgRef.current).k;
+        const yearsAcross = Math.round((w - (panelOpen ? PANEL_WIDTH_PX : 0)) / (k * (CHART_WIDTH / (maxYear - MIN_YEAR))));
+        exportViewport(svgRef.current, {
+            width: w,
+            height: h,
+            cropRight: panelOpen ? PANEL_WIDTH_PX : 0,
+            title: subject ? `${subject} lineage — Linux Ancestry` : 'Linux Ancestry — timeline',
+            subtitle: `${visibleNodes.length.toLocaleString()} distributions${subject ? `, ${visibleNodes.filter(n => relatedIds?.has(n.id)).length} in lineage` : ''} · ${yearsAcross} years across the view · ${dateStamp()}`,
+            filename: `linux-ancestry-timeline-${subject ? slugify(subject) : 'view'}-${dateStamp()}.svg`,
+            stripSelectors: ['.node-hit', '.link-hit'],
         });
-
-        addTitle(clone, frame, isFiltered ? `${activeHighlightNode!.name} — Linux Ancestry` : 'Linux Ancestry');
-        downloadSvg(clone, `linux-ancestry-${isFiltered ? slugify(activeHighlightNode!.name) : 'full'}.svg`);
-    }, [searchTerm, activeHighlightNode]);
+    }, [selectedNode, activeHighlightNode, relatedIds, visibleNodes, maxYear]);
 
     // Fit a canvas-space box into the viewport, keeping the detail panel clear when it is open.
     const fitToBox = useCallback((box: { minX: number; maxX: number; minY: number; maxY: number }, panelOpen: boolean) => {
