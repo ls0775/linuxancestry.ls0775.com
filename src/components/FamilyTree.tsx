@@ -24,6 +24,8 @@ const SECONDARY_FONT = 9;
 /** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
 const MIN_DOT_PX = 2.5;
 const RING_PX = 1.25;
+const LOGO_TILE = 96;
+const LOGO_IMG = 76;
 const PANEL_WIDTH_PX = 22 * 16 + 32;
 const FIT_PAD_PX = 40;
 const MAX_FIT_SCALE = 0.6;
@@ -150,6 +152,9 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
         if (!groupsRef.current) {
             const svg = d3.select(svgRef.current);
             svg.selectAll('*').remove();
+            // Shared circular clip for logo images (user-space, centred on each node's origin).
+            svg.append('defs').append('clipPath').attr('id', 'timeline-logo-clip')
+                .append('circle').attr('r', LOGO_IMG / 2);
             const gZoom = svg.append('g');
             const gStickyAxis = svg.append('g').attr('class', 'sticky-axis').attr('pointer-events', 'none');
 
@@ -345,17 +350,18 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
 
         nodeEnter.append('circle').attr('class', 'node-hit').attr('fill', 'transparent').attr('r', NODE_R);
         nodeEnter.append('circle').attr('class', 'node-dot').attr('r', NODE_R);
-        // Logo tile — flat page-coloured square with a hairline, shown when zoomed in.
-        nodeEnter.append('rect')
+        // Logo medallion — page-coloured disc with a hairline ring, shown when zoomed in.
+        nodeEnter.append('circle')
             .attr('class', 'node-logo-bg')
-            .attr('x', -48).attr('y', -48).attr('width', 96).attr('height', 96)
+            .attr('r', LOGO_TILE / 2)
             .attr('fill', theme.bg).attr('stroke', theme.rule).attr('stroke-width', 2)
             .style('display', 'none').style('pointer-events', 'none');
         nodeEnter.append('image')
             .attr('class', 'node-logo')
             .attr('href', d => `/logos/${d.data.id}.png`)
-            .attr('x', -36).attr('y', -36).attr('width', 72).attr('height', 72)
-            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .attr('x', -LOGO_IMG / 2).attr('y', -LOGO_IMG / 2).attr('width', LOGO_IMG).attr('height', LOGO_IMG)
+            .attr('preserveAspectRatio', 'xMidYMid slice')
+            .attr('clip-path', 'url(#timeline-logo-clip)')
             .style('display', 'none').style('pointer-events', 'none');
         nodeEnter.append('text')
             .attr('class', 'node-label')

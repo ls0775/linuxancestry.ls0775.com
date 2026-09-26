@@ -18,7 +18,7 @@ const fitScaleFor = (w: number, h: number): number => Math.min((w - 80) / (RADIU
 const NODE_R = 6;
 const LABEL_OFFSET = 10;
 const LOGO_TILE = 14;
-const LOGO_IMG = 10;
+const LOGO_IMG = 11;
 const PRIMARY_FONT = 13;
 const SECONDARY_FONT = 9;
 /** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
@@ -121,6 +121,8 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
         if (!groupsRef.current) {
             const svg = d3.select(svgRef.current).style('user-select', 'none');
             svg.selectAll('*').remove();
+            svg.append('defs').append('clipPath').attr('id', 'radial-logo-clip')
+                .append('circle').attr('r', LOGO_IMG / 2);
             const gZoom = svg.append('g');
 
             const radiusScale = d3.scaleLinear().domain([MIN_YEAR, maxYear + 1]).range([0, RADIUS - 100]);
@@ -268,17 +270,19 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
 
         nodeEnter.append('circle').attr('class', 'node-hit').attr('fill', 'transparent').attr('r', NODE_R);
         nodeEnter.append('circle').attr('class', 'node-dot').attr('r', NODE_R);
-        // Logo tile — flat page-coloured square with a hairline, shown when zoomed in.
-        nodeEnter.append('rect')
+        // Logo medallion — counter-rotated so logos stay upright regardless of the node's angle.
+        const logoWrap = nodeEnter.append('g').attr('class', 'node-logo-wrap');
+        logoWrap.append('circle')
             .attr('class', 'node-logo-bg')
-            .attr('x', -LOGO_TILE / 2).attr('y', -LOGO_TILE / 2).attr('width', LOGO_TILE).attr('height', LOGO_TILE)
+            .attr('r', LOGO_TILE / 2)
             .attr('fill', theme.bg).attr('stroke', theme.rule).attr('stroke-width', 0.3)
             .style('display', 'none').style('pointer-events', 'none');
-        nodeEnter.append('image')
+        logoWrap.append('image')
             .attr('class', 'node-logo')
             .attr('href', d => `/logos/${d.data.id}.png`)
             .attr('x', -LOGO_IMG / 2).attr('y', -LOGO_IMG / 2).attr('width', LOGO_IMG).attr('height', LOGO_IMG)
-            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .attr('preserveAspectRatio', 'xMidYMid slice')
+            .attr('clip-path', 'url(#radial-logo-clip)')
             .style('display', 'none').style('pointer-events', 'none');
         nodeEnter.append('text').attr('class', 'node-label').attr('dy', '0.31em')
             .style('paint-order', 'stroke').style('stroke', theme.bg).style('stroke-width', '3px')
@@ -301,6 +305,9 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
                 if (!d.data.stop) return 'none';
                 return highlighted(d.data.id) ? theme.linkHighlight : theme.nodeDiscontinued;
             });
+
+        nodeUpdate.select('g.node-logo-wrap')
+            .attr('transform', d => `rotate(${90 - (d.x * 180) / Math.PI})`);
 
         nodeUpdate.select('text')
             .attr('transform', d => (d.x >= Math.PI ? 'rotate(180)' : null))
