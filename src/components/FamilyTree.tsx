@@ -7,6 +7,7 @@ import { getVizTheme } from '../utils/theme';
 import { getYear, getPopularityRank } from '../utils/distroUtils';
 import { buildHierarchy, getFamilyId, MIN_YEAR, ROOT_ID } from '../utils/lineage';
 import { addTitle, cloneForExport, downloadSvg, slugify } from '../utils/svgExport';
+import { cullLabels, estimateTextWidth, frameThrottle, type LabelCandidate } from '../utils/labelCulling';
 import { useSvgSize } from '../hooks/useSvgSize';
 import { useTreeState } from '../hooks/useTreeState';
 import type { DistroNode } from '../hooks/useDistroData';
@@ -15,6 +16,14 @@ const CHART_WIDTH = 32000;
 const CHART_HEIGHT = 40000;
 const PRIMARY_RANK = 100;
 const FAMILY_GAP = 1200;
+const NODE_R = 24;
+const LABEL_OFFSET = 52;
+const PRIMARY_FONT = 12;
+const SECONDARY_FONT = 9;
+/** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
+const MIN_DOT_PX = 4;
+const HIT_PX = 12;
+const LINK_HIT_PX = 10;
 
 type HNode = d3.HierarchyPointNode<DistroNode>;
 type HLink = d3.HierarchyPointLink<DistroNode>;
@@ -27,10 +36,14 @@ interface Groups {
     gNode: G;
     xScale: d3.ScaleLinear<number, number>;
     treeLayout: d3.TreeLayout<DistroNode>;
+    applyZoomLevel: () => void;
 }
 
 const rankOf = (d: HNode): number => (d.data.id === ROOT_ID ? 0 : getPopularityRank(d.data));
 const isPrimary = (d: HNode): boolean => rankOf(d) <= PRIMARY_RANK;
+const fontFor = (d: HNode): number => (isPrimary(d) ? PRIMARY_FONT : SECONDARY_FONT);
+const dotRadius = (k: number, isHighlighted: boolean): number =>
+    Math.max(isHighlighted ? NODE_R * 1.25 : NODE_R, MIN_DOT_PX / k);
 
 interface FamilyTreeProps {
     data: DistroNode[];
@@ -43,6 +56,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
     const groupsRef = useRef<Groups | null>(null);
     const prevHighlightIdRef = useRef<string | null>(null);
     const prevTimelineYearRef = useRef<number | null>(null);
+    const highlightRef = useRef<(id: string) => boolean>(() => false);
 
     const state = useTreeState(data);
     const {
@@ -105,15 +119,16 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
         const clone = cloneForExport(svgRef.current, frame);
         clone.querySelector('g')?.removeAttribute('transform');
         clone.querySelector('g.sticky-axis')?.remove();
+        clone.querySelectorAll('.node-hit, .link-hit').forEach(el => el.remove());
+        clone.querySelectorAll('circle.node-dot').forEach(c => c.setAttribute('r', String(NODE_R)));
 
         const theme = getVizTheme();
         const labelFont = Math.round(DESIRED_FONT_PX / scale);
-        const CIRCLE_R = 24;
-        clone.querySelectorAll<SVGTextElement>('g.node-group text').forEach(t => {
+        clone.querySelectorAll<SVGTextElement>('text.node-label').forEach(t => {
             t.style.fontSize = `${labelFont}px`;
             t.style.display = '';
             t.setAttribute('text-anchor', 'start');
-            t.setAttribute('x', String(CIRCLE_R + 8));
+            t.setAttribute('x', String(NODE_R + 8));
             t.removeAttribute('dy');
             t.setAttribute('dominant-baseline', 'middle');
             t.setAttribute('font-family', theme.font);
@@ -172,19 +187,42 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
                     .style('display', y => (yearSpacing >= (y % 5 === 0 ? 8 : 30) ? null : 'none'));
             };
 
-            const applyZoomLevel = (k: number) => {
-                gZoom.selectAll<SVGTextElement, HNode>('.node-label')
-                    .style('font-size', d => `${(isPrimary(d) ? 12 : 9) / k}px`)
-                    .style('display', d => (isPrimary(d) || k >= 0.12 ? null : 'none'));
-                gZoom.selectAll('.node-logo, .node-logo-bg').style('display', () => (k >= 0.4 ? null : 'none'));
+            // Zoom-dependent sizing and label occlusion, shared by the zoom handler and the update effect.
+            const applyZoomLevel = () => {
+                if (!svgRef.current || !containerRef.current) return;
+                const t = d3.zoomTransform(svgRef.current);
+                const k = t.k;
+                const viewport = { width: containerRef.current.clientWidth, height: containerRef.current.clientHeight };
+                const highlightedNow = highlightRef.current;
+
+                gNode.selectAll<SVGCircleElement, HNode>('circle.node-dot')
+                    .attr('r', d => dotRadius(k, highlightedNow(d.data.id)));
+                gNode.selectAll<SVGCircleElement, HNode>('circle.node-hit').attr('r', HIT_PX / k);
+                gLink.selectAll('path.link-hit').attr('stroke-width', Math.max(6, LINK_HIT_PX / k));
+                gNode.selectAll('.node-logo, .node-logo-bg').style('display', () => (k >= 0.4 ? null : 'none'));
+
+                const candidates: LabelCandidate[] = [];
+                gNode.selectAll<SVGTextElement, HNode>('text.node-label').each(function (d) {
+                    const font = fontFor(d);
+                    this.style.fontSize = `${font / k}px`;
+                    const lit = highlightedNow(d.data.id);
+                    const w = estimateTextWidth(d.data.name, font);
+                    candidates.push({
+                        el: this,
+                        box: { x: t.applyX(d.x) + LABEL_OFFSET * k, y: t.applyY(d.y) - font / 2, w, h: font },
+                        priority: (lit ? 0 : isPrimary(d) ? 10_000 : 20_000) + rankOf(d),
+                    });
+                });
+                cullLabels(candidates, viewport);
             };
+            const applyZoomLevelThrottled = frameThrottle(applyZoomLevel);
 
             const zoom = d3.zoom<SVGSVGElement, unknown>()
                 .scaleExtent([0.001, 4])
                 .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
                     gZoom.attr('transform', event.transform.toString());
                     updateStickyAxis(event.transform);
-                    applyZoomLevel(event.transform.k);
+                    applyZoomLevelThrottled();
                 });
             zoomRef.current = zoom;
             svg.call(zoom).on('click', () => setSelectedNode(null));
@@ -200,13 +238,14 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
                 .size([CHART_HEIGHT, CHART_WIDTH])
                 .separation((a, b) => (a.parent === b.parent ? 15 : 30));
 
-            groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout };
+            groupsRef.current = { gZoom, gGrid, gLink, gNode, xScale, treeLayout, applyZoomLevel };
         }
 
-        const { gGrid, gLink, gNode, xScale, treeLayout } = groupsRef.current;
+        const { gGrid, gLink, gNode, xScale, treeLayout, applyZoomLevel } = groupsRef.current;
         const duration = 400;
         const colorScale = d3.scaleOrdinal<string>(theme.families);
         const highlighted = (id: string) => !!activeHighlightNode && !!relatedIds?.has(id);
+        highlightRef.current = highlighted;
 
         gGrid.selectAll<SVGLineElement, number>('line').data(years)
             .join(enter => enter.append('line')
@@ -246,6 +285,12 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             node.x = xScale(getYear(node.data.start));
         }
 
+        const select = (d: HNode) => {
+            if (d.data.id === ROOT_ID) return;
+            setSelectedNode(d.data);
+            zoomToNode(d, 0.25);
+        };
+
         const diagonal = d3.linkHorizontal<HLink, HNode>().x(d => d.x).y(d => d.y);
         const links = gLink.selectAll<SVGPathElement, HLink>('path.link-path').data(root.links(), d => d.target.data.id);
         links.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
@@ -258,14 +303,20 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             .attr('stroke-width', d => (highlighted(d.target.data.id) ? 10 : 6))
             .attr('d', diagonal);
 
+        // Invisible wide strokes so a branch can be grabbed, not just its endpoint.
+        const linkHits = gLink.selectAll<SVGPathElement, HLink>('path.link-hit').data(root.links(), d => d.target.data.id);
+        linkHits.exit().remove();
+        linkHits.enter().append('path').attr('class', 'link-hit')
+            .attr('fill', 'none').attr('stroke', 'transparent').attr('pointer-events', 'stroke').attr('cursor', 'pointer')
+            .on('click', (event: MouseEvent, d) => { event.stopPropagation(); select(d.target); })
+            .on('mouseenter', (event: MouseEvent, d) => setHoverInfo({ node: d.target.data, x: event.clientX, y: event.clientY }))
+            .on('mousemove', (event: MouseEvent) => setHoverInfo(prev => (prev ? { ...prev, x: event.clientX, y: event.clientY } : null)))
+            .on('mouseleave', () => setHoverInfo(null))
+            .merge(linkHits)
+            .attr('d', diagonal);
+
         const nodes = gNode.selectAll<SVGGElement, HNode>('g.node-group').data(root.descendants(), d => d.data.id);
         nodes.exit().transition().duration(duration).attr('opacity', 0).remove();
-
-        const select = (d: HNode) => {
-            if (d.data.id === ROOT_ID) return;
-            setSelectedNode(d.data);
-            zoomToNode(d, 0.25);
-        };
 
         const nodeEnter = nodes.enter().append('g')
             .attr('class', 'node-group')
@@ -286,7 +337,8 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             })
             .on('mouseleave', () => setHoverInfo(null));
 
-        nodeEnter.append('circle').attr('r', 24).attr('stroke-width', 6);
+        nodeEnter.append('circle').attr('class', 'node-hit').attr('fill', 'transparent').attr('r', NODE_R);
+        nodeEnter.append('circle').attr('class', 'node-dot').attr('r', NODE_R).attr('stroke-width', 6);
         // Logo tile — flat page-coloured square with a hairline, shown when zoomed in.
         nodeEnter.append('rect')
             .attr('class', 'node-logo-bg')
@@ -301,23 +353,22 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             .style('display', 'none').style('pointer-events', 'none');
         nodeEnter.append('text')
             .attr('class', 'node-label')
-            .attr('text-anchor', 'start').attr('dominant-baseline', 'middle').attr('x', 52)
-            .style('pointer-events', 'none').style('font-weight', '400');
+            .attr('text-anchor', 'start').attr('dominant-baseline', 'middle').attr('x', LABEL_OFFSET)
+            .style('font-weight', '400');
 
         const nodeMerge = nodes.merge(nodeEnter);
         const nodeUpdate = nodeMerge.transition().duration(duration)
             .attr('opacity', d => (!activeHighlightNode || highlighted(d.data.id) ? 1 : 0.1))
             .attr('transform', d => `translate(${d.x},${d.y})`);
 
-        nodeUpdate.select('circle')
+        nodeUpdate.select('circle.node-dot')
             .attr('fill', d => {
                 if (highlighted(d.data.id)) return theme.linkHighlight;
                 if (d.data.id === ROOT_ID) return theme.nodeRoot;
                 if (d.data.stop) return theme.nodeDiscontinued;
                 return colorScale(getFamilyId(d));
             })
-            .attr('stroke', d => (activeHighlightNode?.id === d.data.id ? theme.bg : 'none'))
-            .attr('r', d => (highlighted(d.data.id) ? 30 : 24));
+            .attr('stroke', d => (activeHighlightNode?.id === d.data.id ? theme.bg : 'none'));
 
         nodeUpdate.select('text')
             .attr('fill', d => {
@@ -326,30 +377,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ data }) => {
             })
             .text(d => d.data.name);
 
-        // Label culling: primary (top-100) labels always show; secondary labels only
-        // when they don't overlap a label that is already visible.
-        const k = d3.zoomTransform(svgRef.current).k;
-        const labels = nodeMerge.select<SVGTextElement>('text.node-label');
-        labels.style('font-size', d => `${(isPrimary(d) ? 12 : 9) / k}px`);
-        if (k < 0.005) {
-            labels.style('display', 'none');
-        } else {
-            const occupied: { y: number; h: number }[] = [];
-            labels.filter(d => isPrimary(d))
-                .style('display', null)
-                .each(d => occupied.push({ y: d.y * k, h: 20 }));
-            const secondary = labels.filter(d => !isPrimary(d)).nodes()
-                .map(el => ({ el, d: d3.select<SVGTextElement, HNode>(el).datum() }))
-                .sort((a, b) => a.d.y - b.d.y);
-            for (const { el, d } of secondary) {
-                if (k < 0.12) { el.style.display = 'none'; continue; }
-                const sy = d.y * k;
-                const overlaps = occupied.some(v => Math.abs(sy - v.y) < v.h + 10);
-                el.style.display = overlaps ? 'none' : '';
-                if (!overlaps) occupied.push({ y: sy, h: 12 });
-            }
-        }
-        gNode.selectAll('.node-logo, .node-logo-bg').style('display', () => (k >= 0.4 ? null : 'none'));
+        applyZoomLevel();
 
         // Pan to a newly highlighted node.
         const newHighlightId = activeHighlightNode?.id ?? null;

@@ -7,12 +7,21 @@ import { getVizTheme } from '../utils/theme';
 import { getYear, getPopularityRank } from '../utils/distroUtils';
 import { buildHierarchy, getFamilyId, MIN_YEAR, ROOT_ID } from '../utils/lineage';
 import { cloneForExport, downloadSvg, slugify } from '../utils/svgExport';
+import { cullLabels, estimateTextWidth, frameThrottle, rotatedLabelBox, type LabelCandidate } from '../utils/labelCulling';
 import { useSvgSize } from '../hooks/useSvgSize';
 import { useTreeState } from '../hooks/useTreeState';
 import type { DistroNode } from '../hooks/useDistroData';
 
 const RADIUS = 2500;
 const PRIMARY_RANK = 100;
+const NODE_R = 6;
+const LABEL_OFFSET = 8;
+const PRIMARY_FONT = 13;
+const SECONDARY_FONT = 9;
+/** Minimum on-screen sizes so nodes stay visible and clickable at any zoom. */
+const MIN_DOT_PX = 3.5;
+const HIT_PX = 11;
+const LINK_HIT_PX = 10;
 
 type HNode = d3.HierarchyPointNode<DistroNode>;
 type HLink = d3.HierarchyPointLink<DistroNode>;
@@ -26,9 +35,12 @@ interface Groups {
     radiusScale: d3.ScaleLinear<number, number>;
     treeLayout: d3.TreeLayout<DistroNode>;
     diagonal: d3.LinkRadial<unknown, HLink, HNode>;
+    applyZoomLevel: () => void;
 }
 
-const isPrimary = (d: HNode): boolean => d.data.id === ROOT_ID || getPopularityRank(d.data) <= PRIMARY_RANK;
+const rankOf = (d: HNode): number => (d.data.id === ROOT_ID ? 0 : getPopularityRank(d.data));
+const isPrimary = (d: HNode): boolean => rankOf(d) <= PRIMARY_RANK;
+const fontFor = (d: HNode): number => (isPrimary(d) ? PRIMARY_FONT : SECONDARY_FONT);
 const toCartesian = (d: HNode) => ({ x: d.y * Math.cos(d.x - Math.PI / 2), y: d.y * Math.sin(d.x - Math.PI / 2) });
 
 interface RadialTreeProps {
@@ -41,6 +53,7 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
     const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
     const groupsRef = useRef<Groups | null>(null);
     const prevHighlightIdRef = useRef<string | null>(null);
+    const highlightRef = useRef<(id: string) => boolean>(() => false);
 
     const state = useTreeState(data);
     const {
@@ -83,6 +96,8 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
 
         const clone = cloneForExport(svgRef.current, frame);
         clone.querySelector('g')?.removeAttribute('transform');
+        clone.querySelectorAll('.node-hit, .link-hit').forEach(el => el.remove());
+        clone.querySelectorAll('circle.node-dot').forEach(c => c.setAttribute('r', String(NODE_R)));
 
         const theme = getVizTheme();
         const px = (n: number) => `${Math.round(n / frame.scale)}px`;
@@ -117,18 +132,42 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             const gLink = gZoom.append('g').attr('fill', 'none');
             const gNode = gZoom.append('g').attr('cursor', 'pointer').attr('pointer-events', 'all');
 
-            const applyZoomLevel = (k: number) => {
-                gZoom.selectAll<SVGTextElement, HNode>('text.node-label')
-                    .style('font-size', d => `${(isPrimary(d) ? 14 : 9) / k}px`)
-                    .style('display', d => ((isPrimary(d) ? k >= 0.05 : k >= 0.15) ? null : 'none'));
+            // Zoom-dependent sizing and label occlusion, shared by the zoom handler and the update effect.
+            const applyZoomLevel = () => {
+                if (!svgRef.current || !containerRef.current) return;
+                const t = d3.zoomTransform(svgRef.current);
+                const k = t.k;
+                const viewport = { width: containerRef.current.clientWidth, height: containerRef.current.clientHeight };
+                const highlightedNow = highlightRef.current;
+
+                gNode.selectAll<SVGCircleElement, HNode>('circle.node-dot')
+                    .attr('r', d => Math.max(highlightedNow(d.data.id) ? NODE_R * 1.33 : NODE_R, MIN_DOT_PX / k));
+                gNode.selectAll<SVGCircleElement, HNode>('circle.node-hit').attr('r', HIT_PX / k);
+                gLink.selectAll('path.link-hit').attr('stroke-width', Math.max(3, LINK_HIT_PX / k));
                 gZoom.selectAll('text.year-label').style('font-size', `${10 / k}px`);
+
+                const candidates: LabelCandidate[] = [];
+                gNode.selectAll<SVGTextElement, HNode>('text.node-label').each(function (d) {
+                    const font = fontFor(d);
+                    this.style.fontSize = `${font / k}px`;
+                    const lit = highlightedNow(d.data.id);
+                    const c = toCartesian(d);
+                    const angle = d.x - Math.PI / 2;
+                    candidates.push({
+                        el: this,
+                        box: rotatedLabelBox(t.applyX(c.x), t.applyY(c.y), angle, LABEL_OFFSET * k, estimateTextWidth(d.data.name, font), font),
+                        priority: (lit ? 0 : isPrimary(d) ? 10_000 : 20_000) + rankOf(d),
+                    });
+                });
+                cullLabels(candidates, viewport);
             };
+            const applyZoomLevelThrottled = frameThrottle(applyZoomLevel);
 
             const zoom = d3.zoom<SVGSVGElement, unknown>()
                 .scaleExtent([0.01, 4])
                 .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
                     gZoom.attr('transform', event.transform.toString());
-                    applyZoomLevel(event.transform.k);
+                    applyZoomLevelThrottled();
                 });
             zoomRef.current = zoom;
             svg.call(zoom).on('click', () => setSelectedNode(null));
@@ -141,13 +180,14 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
                 .separation((a, b) => (a.parent === b.parent ? 4 : 8));
             const diagonal = d3.linkRadial<HLink, HNode>().angle(d => d.x).radius(d => d.y);
 
-            groupsRef.current = { gZoom, gYearLines, gLink, gNode, radiusScale, treeLayout, diagonal };
+            groupsRef.current = { gZoom, gYearLines, gLink, gNode, radiusScale, treeLayout, diagonal, applyZoomLevel };
         }
 
-        const { gNode, gLink, gYearLines, radiusScale, treeLayout, diagonal } = groupsRef.current;
+        const { gNode, gLink, gYearLines, radiusScale, treeLayout, diagonal, applyZoomLevel } = groupsRef.current;
         const duration = 400;
         const colorScale = d3.scaleOrdinal<string>(theme.families);
         const highlighted = (id: string) => !!activeHighlightNode && !!relatedIds?.has(id);
+        highlightRef.current = highlighted;
 
         const hierarchy = buildHierarchy(visibleNodes);
         if (!hierarchy) return;
@@ -168,6 +208,12 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             .attr('y', y => -radiusScale(y))
             .text(y => y);
 
+        const select = (d: HNode) => {
+            if (d.data.id === ROOT_ID) return;
+            setSelectedNode(d.data);
+            zoomToNode(d, 0.3, true);
+        };
+
         const links = gLink.selectAll<SVGPathElement, HLink>('path.radial-link').data(root.links(), d => d.target.data.id);
         links.exit().transition().duration(duration).attr('stroke-opacity', 0).remove();
         links.enter().append('path').attr('class', 'radial-link')
@@ -180,14 +226,21 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             .attr('stroke-opacity', d => (!activeHighlightNode ? 1 : highlighted(d.target.data.id) ? 1 : 0.15))
             .attr('stroke-width', d => (highlighted(d.target.data.id) ? 2.5 : 1.5));
 
+        // Invisible wide strokes so a branch can be grabbed, not just its endpoint.
+        const linkHits = gLink.selectAll<SVGPathElement, HLink>('path.link-hit').data(root.links(), d => d.target.data.id);
+        linkHits.exit().remove();
+        linkHits.enter().append('path').attr('class', 'link-hit')
+            .attr('stroke', 'transparent').attr('pointer-events', 'stroke').attr('cursor', 'pointer')
+            .on('click', (event: MouseEvent, d) => { event.stopPropagation(); select(d.target); })
+            .on('mouseenter', (event: MouseEvent, d) => setHoverInfo({ node: d.target.data, x: event.clientX, y: event.clientY }))
+            .on('mousemove', (event: MouseEvent) => setHoverInfo(prev => (prev ? { ...prev, x: event.clientX, y: event.clientY } : null)))
+            .on('mouseleave', () => setHoverInfo(null))
+            .merge(linkHits)
+            .attr('d', diagonal);
+
         const nodes = gNode.selectAll<SVGGElement, HNode>('g.node-group').data(root.descendants().reverse(), d => d.data.id);
         nodes.exit().transition().duration(duration).attr('fill-opacity', 0).remove();
 
-        const select = (d: HNode) => {
-            if (d.data.id === ROOT_ID) return;
-            setSelectedNode(d.data);
-            zoomToNode(d, 0.3, true);
-        };
         const placement = (d: HNode) => `rotate(${(d.x * 180) / Math.PI - 90}) translate(${d.y},0)`;
 
         const nodeEnter = nodes.enter().append('g')
@@ -209,7 +262,8 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             })
             .on('mouseleave', () => setHoverInfo(null));
 
-        nodeEnter.append('circle').attr('r', 6);
+        nodeEnter.append('circle').attr('class', 'node-hit').attr('fill', 'transparent').attr('r', NODE_R);
+        nodeEnter.append('circle').attr('class', 'node-dot').attr('r', NODE_R);
         nodeEnter.append('text').attr('class', 'node-label').attr('dy', '0.31em')
             .style('paint-order', 'stroke').style('stroke', theme.bg).style('stroke-width', '3px')
             .style('font-weight', '400');
@@ -219,18 +273,17 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             .attr('transform', placement)
             .attr('fill-opacity', d => (!activeHighlightNode || highlighted(d.data.id) ? 1 : 0.1));
 
-        nodeUpdate.select('circle')
+        nodeUpdate.select('circle.node-dot')
             .attr('fill', d => {
                 if (highlighted(d.data.id)) return theme.linkHighlight;
                 if (d.data.id === ROOT_ID) return theme.nodeRoot;
                 if (d.data.stop) return theme.nodeDiscontinued;
                 return colorScale(getFamilyId(d));
-            })
-            .attr('r', d => (highlighted(d.data.id) ? 8 : 6));
+            });
 
         nodeUpdate.select('text')
             .attr('transform', d => (d.x >= Math.PI ? 'rotate(180)' : null))
-            .attr('x', d => (d.x >= Math.PI ? -8 : 8))
+            .attr('x', d => (d.x >= Math.PI ? -LABEL_OFFSET : LABEL_OFFSET))
             .attr('text-anchor', d => (d.x >= Math.PI ? 'end' : 'start'))
             .attr('fill', d => {
                 if (highlighted(d.data.id)) return theme.labelHighlight;
@@ -238,10 +291,7 @@ const RadialTree: React.FC<RadialTreeProps> = ({ data }) => {
             })
             .text(d => d.data.name);
 
-        const k = d3.zoomTransform(svgRef.current).k;
-        nodeMerge.select<SVGTextElement>('text.node-label')
-            .style('font-size', d => `${(isPrimary(d) ? 14 : 9) / k}px`)
-            .style('display', d => ((isPrimary(d) ? k >= 0.05 : k >= 0.15) ? null : 'none'));
+        applyZoomLevel();
 
         // Pan to a newly highlighted node.
         const newHighlightId = activeHighlightNode?.id ?? null;
