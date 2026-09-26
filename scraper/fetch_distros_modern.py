@@ -236,8 +236,8 @@ def fetch_distribution_details(session: requests.Session, slug: str, name: str) 
         # Search for "Popularity:" text across all tags
         pop_label = soup.find(string=re.compile(r'Popularity:', re.I))
         if pop_label:
-            # Look at the parent container (likely an <li> or <td>)
-            container = pop_label.find_parent()
+            # The label is inside <b>; the rank is in a sibling <a>, so use the enclosing <li>
+            container = pop_label.find_parent('li') or pop_label.find_parent()
             if container:
                 text = container.get_text()
                 # Pattern: "Popularity: 1 (4,443 hits per day)"
