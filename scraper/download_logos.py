@@ -31,6 +31,16 @@ def get_logo_url(distro: dict) -> str:
     return f'https://distrowatch.com/images/y9go/{slug}.png'
 
 
+PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
+
+
+def is_png(resp) -> bool:
+    """Only accept real PNG bodies; DistroWatch returns HTML for missing logos."""
+    return (resp.headers.get('Content-Type', '').startswith('image/')
+            and resp.content[:8] == PNG_MAGIC
+            and len(resp.content) > 500)
+
+
 def main():
     refresh = '--refresh' in sys.argv
 
@@ -62,13 +72,14 @@ def main():
         url = get_logo_url(distro)
         try:
             resp = requests.get(url, headers=HEADERS, timeout=10)
-            if resp.status_code == 200 and len(resp.content) > 500:
+            if resp.status_code == 200 and is_png(resp):
                 dest.write_bytes(resp.content)
                 downloaded += 1
                 print(f'  ✓  {dist_id}')
             else:
                 failed += 1
-                print(f'  ✗  {dist_id}  (HTTP {resp.status_code}, {len(resp.content)} bytes)  {url}')
+                ctype = resp.headers.get('Content-Type', '?')
+                print(f'  ✗  {dist_id}  (HTTP {resp.status_code}, {ctype}, {len(resp.content)} bytes)  {url}')
         except Exception as exc:
             failed += 1
             print(f'  ✗  {dist_id}  ({exc})')
