@@ -1,5 +1,5 @@
 /**
- * Resolves design tokens from `:root` (see src/index.css and DESIGN.md).
+ * Resolves design tokens from `:root` (see src/index.css and docs/design.md).
  * D3 sets SVG presentation attributes, and the SVG export serialises them,
  * so we resolve to concrete values here rather than embedding `var()`.
  */

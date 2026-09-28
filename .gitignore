@@ -30,12 +30,6 @@ __pycache__/
 
 # Project specific
 inspiration/
-scraper/search_all.html
+scraper/*.html
 scraper/distrowatch_cache.json
 scraper/distros_raw.json
-scraper/distrowatch_sample.html
-scraper/test_run.json
-scraper/test_scraper.py
-scraper/repair.log
-scraper/update.log
-distros_test.json

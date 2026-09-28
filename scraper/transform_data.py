@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Transform raw DistroWatch data into the format expected by the React app
-Converts from raw scraper output to the hierarchical JSON structure
+Turn the raw scraper output into public/distros.json.
 """
 
 import json

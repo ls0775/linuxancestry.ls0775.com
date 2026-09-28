@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from fetch_distros_modern import sanitize_date  # noqa: E402
+from fetch_distros import sanitize_date  # noqa: E402
 from transform_data import merge_record, merge_records, normalize_parent_name  # noqa: E402
 
 

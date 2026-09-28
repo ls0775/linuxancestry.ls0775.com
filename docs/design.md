@@ -1,7 +1,7 @@
 # Design system: calm, light
 
 A small, reusable set of rules for plain static sites. Copy this file into another
-repo (or point an AI assistant at it) and say "apply DESIGN.md".
+repo and follow it.
 
 Reference implementation: `index.html` and `style.css` in ls0775/ls0775.com.
 

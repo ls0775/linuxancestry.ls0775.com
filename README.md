@@ -1,61 +1,54 @@
 # Linux Ancestry
 
-A family tree of Linux distributions, 1991 to today. About 1,100 distributions from DistroWatch, drawn as a timeline tree and as a radial map.
+A family tree of Linux distributions, from 1991 to now.
 
-Live: https://linuxancestry.ls0775.com
+https://linuxancestry.ls0775.com
 
-## Documentation
+Around 1,100 distributions listed on DistroWatch are drawn as a tree. You can
+view it as a timeline (x axis is the year of first release) or as a radial map
+(distance from the centre is the year). Click a distro to see its parents and
+children; drag the year slider to watch families appear and die off.
 
-- [Design system](./DESIGN.md) — calm, light, flat. Tokens and rules for all UI.
-- [Product requirements](./PRD.md) — architecture and feature specification.
-- [Data pipeline](./scraper/README.md) — the DistroWatch scraper and transform.
+This grew out of [LinuxTimeline](https://github.com/ls0775/LinuxTimeline) and
+the static SVG produced by
+[jappeace/distrowatch1graph1svg](https://github.com/jappeace/distrowatch1graph1svg).
+Distribution data and relationships come from the
+[DistroWatch family tree](https://distrowatch.com/dwres.php?resource=family-tree).
 
-## Credits
+## Running it
 
-- [jappeace/distrowatch1graph1svg](https://github.com/jappeace/distrowatch1graph1svg) — the original SVG family tree generated from DistroWatch data.
-- [ls0775/LinuxTimeline](https://github.com/ls0775/LinuxTimeline) — the earlier chronological tracker this project grew from.
-- [DistroWatch family tree](https://distrowatch.com/dwres.php?resource=family-tree) — the source of distribution metadata and relationships.
+You need Node 24 (see `.nvmrc`). There is a dev container in `.devcontainer/`
+if you would rather not install anything locally.
 
-## Stack
+    npm install
+    npm run dev
 
-React 19, Vite, TypeScript, D3, Tailwind CSS 4. Hosted on Azure Static Web Apps; deployed from GitHub Actions on push to `master`.
+`npm run lint` runs tsc and eslint, `npm test` runs the unit tests and
+`npm run build` writes the site to `dist/`.
 
-## Development
+## How it is put together
 
-### Dev container (recommended)
+- `src/` is a React app. `App.tsx` loads `public/distros.json` and hands it to
+  one of two D3 views, `FamilyTree.tsx` (timeline) or `RadialTree.tsx`.
+- Both views build their SVG once and then update it in place, so zooming and
+  selecting do not redraw the whole tree.
+- Every distro hangs off a virtual "Linux" root. If a parent is missing or
+  filtered out, the child is attached to the root instead of disappearing.
+- `scraper/` holds the Python scripts that fetch the data from DistroWatch and
+  write `public/distros.json`. A full run takes about five hours because
+  DistroWatch asks for a 15 second delay between requests. See
+  [scraper/README.md](scraper/README.md).
+- Logos live in `public/logos/` so the site does not lean on DistroWatch at
+  runtime.
+- The look follows [docs/design.md](docs/design.md): off-white page, dark
+  grey text, no shadows or animation.
 
-The repo ships a [Dev Container](https://containers.dev/) (`.devcontainer/`) with Node 24, Python 3.12 and the GitHub CLI.
+Pushing to `master` runs the GitHub Actions workflow, which lints, tests,
+builds and deploys to Azure Static Web Apps.
 
-- **VS Code**: install the *Dev Containers* extension, open the folder, choose **Reopen in Container**.
-- **GitHub Codespaces**: *Code → Create codespace on master*.
-- **CLI**: `npm i -g @devcontainers/cli && devcontainer up --workspace-folder . && devcontainer exec --workspace-folder . npm run dev`
+## Data and attribution
 
-`postCreateCommand` runs `npm ci` and creates `scraper/.venv` with the scraper requirements. Port 5173 is forwarded.
-
-### Manual setup
-
-Requires Node ≥ 20.19 (see `.nvmrc`) and Python 3.
-
-```bash
-npm install
-npm run dev        # Vite dev server
-npm run lint       # tsc + eslint
-npm test           # vitest
-npm run build      # production build → dist/
-```
-
-Regenerating the data (optional; a full scrape takes about five hours because DistroWatch asks for a 15 s crawl delay):
-
-```bash
-cd scraper
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-./update_distros.sh --use-cache      # fetch, merge, logos, popularity
-python3 -m pytest tests              # scraper unit tests
-```
-
-See [scraper/README.md](./scraper/README.md) for the merge policy that keeps hand-edited descriptions and parentage.
-
-## Licence
-
-Maintained for historical and educational purposes, following the data attribution guidelines of DistroWatch.com.
+The data is from DistroWatch.com and is used here for non-commercial,
+educational purposes. If you spot a wrong parent or date, open an issue or
+edit `public/distros.json` directly; hand edits to descriptions and parentage
+survive a re-scrape.

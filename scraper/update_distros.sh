@@ -46,11 +46,11 @@ fi
 
 if [ "$1" == "--use-cache" ]; then
     echo "Using cached data if available..."
-    python3 fetch_distros_modern.py --output distros_raw.json --delay "$DELAY" $REPAIR
+    python3 fetch_distros.py --output distros_raw.json --delay "$DELAY" $REPAIR
 else
     echo "Fetching fresh data (ignoring cache)..."
     echo "Using a delay of ${DELAY}s between requests (DistroWatch robots.txt Crawl-Delay)."
-    python3 fetch_distros_modern.py --output distros_raw.json --no-cache --delay "$DELAY" $REPAIR
+    python3 fetch_distros.py --output distros_raw.json --no-cache --delay "$DELAY" $REPAIR
 fi
 
 # Check if fetch was successful

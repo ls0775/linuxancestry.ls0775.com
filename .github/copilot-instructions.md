@@ -36,7 +36,7 @@ python3 -m pytest tests
 The app is a single-page React 19 + Vite + TypeScript app that visualizes ~1,100 Linux distributions as a family tree.
 
 **Data flow:**
-1. `scraper/fetch_distros_modern.py` scrapes DistroWatch → `scraper/distros_raw.json`
+1. `scraper/fetch_distros.py` scrapes DistroWatch → `scraper/distros_raw.json`
 2. `scraper/transform_data.py` transforms and sanitizes it → `public/distros.json`
 3. `App.tsx` calls `useDistroData()` (`src/hooks/useDistroData.ts`) once; it fetches `/distros.json` and exposes `{ data, isLoading, error, reload }`. App renders the loading/error notice and passes `data` down as a prop.
 4. `App.tsx` lazy-loads either `FamilyTree` (Timeline view) or `RadialTree` (Radial view) based on `viewMode` state
@@ -71,7 +71,7 @@ Both components initialize SVG groups once into a `groupsRef` (on the first rend
 **`DistroNode` schema** (defined in `src/hooks/useDistroData.ts`):  
 `id`, `name`, `parent` (nullable string referencing another `id`), `start` / `stop` (dot-separated date strings), `color`, `icon`/`logo` (URL), `url` (DistroWatch page), `popularity`, `description`, `based_on`, `architecture`, `desktop`, `category`, `origin`, `status`.
 
-**Design system:** follow [`DESIGN.md`](../DESIGN.md) ("calm, light"). All colours are CSS tokens in `:root` (`src/index.css`); never hardcode a colour in a component. D3 code reads tokens at runtime via `getVizTheme()` (`src/utils/theme.ts`) so the SVG export stays self-contained. No framer-motion, no entrance animations, no shadows/gradients/blur; buttons are plain text (`.textbtn`), inputs are underlined (`.field`), floating surfaces use `.panel` (bg + hairline).
+**Design system:** follow [`docs/design.md`](../docs/design.md) ("calm, light"). All colours are CSS tokens in `:root` (`src/index.css`); never hardcode a colour in a component. D3 code reads tokens at runtime via `getVizTheme()` (`src/utils/theme.ts`) so the SVG export stays self-contained. No framer-motion, no entrance animations, no shadows/gradients/blur; buttons are plain text (`.textbtn`), inputs are underlined (`.field`), floating surfaces use `.panel` (bg + hairline).
 
 **Lineage highlighting:**  
 `activeHighlightNode` is computed from whichever is set first: `selectedNode` (click) or an exact-match search. Highlighted nodes/links render in `--viz-link-highlight` (= `--text`); non-related nodes drop to `opacity: 0.1`.

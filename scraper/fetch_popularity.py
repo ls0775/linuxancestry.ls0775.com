@@ -16,7 +16,7 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
-from fetch_distros_modern import HEADERS
+from fetch_distros import HEADERS
 
 POPULARITY_URL = 'https://distrowatch.com/dwres.php?resource=popularity'
 

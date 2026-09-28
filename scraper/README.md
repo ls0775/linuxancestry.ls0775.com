@@ -22,7 +22,7 @@ The dev container does this for you.
 
 The script runs four steps:
 
-1. `fetch_distros_modern.py` — lists every distribution via
+1. `fetch_distros.py` — lists every distribution via
    `search.php?ostype=Linux&status=All`, then fetches each `table.php` page.
    Progress is saved to `distrowatch_cache.json` every ten records, so an
    interrupted run can be resumed. Failed pages are reported at the end and
@@ -66,7 +66,7 @@ Covers the merge policy, parent-name normalisation and date sanitising.
 
 | File | Purpose |
 |------|---------|
-| `fetch_distros_modern.py` | Crawler with retry, resume and repair |
+| `fetch_distros.py` | Crawler with retry, resume and repair |
 | `transform_data.py` | Normalisation, merge and integrity checks |
 | `download_logos.py` | Local logo cache |
 | `fetch_popularity.py` | Popularity rank patch |

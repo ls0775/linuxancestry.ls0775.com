@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Modern DistroWatch scraper using the search page with status=All
-This gets ALL distributions (1100+) including discontinued ones
+Fetch every Linux distribution listed on DistroWatch, including discontinued
+ones, and write the raw records to a JSON file.
 """
 
 import requests
