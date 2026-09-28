@@ -5,7 +5,7 @@ ones, and write the raw records to a JSON file.
 """
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment, NavigableString
 import json
 import time
 import re
@@ -170,9 +170,16 @@ def fetch_distribution_details(session: requests.Session, slug: str, name: str) 
         print(f"  Error: {name} still throttled after {max_retries} attempts", file=sys.stderr)
         return None
 
-    soup = BeautifulSoup(response.text, 'html.parser')
-    
-    # Initialize distribution data with all fields
+    return parse_distribution_page(response.text, slug, name)
+
+
+def parse_distribution_page(html: str, slug: str, name: str) -> Dict:
+    """
+    Parse a table.php page into a raw distribution record.
+    """
+    soup = BeautifulSoup(html, 'html.parser')
+    detail_url = f"{BASE_URL}/table.php?distribution={slug}"
+
     distro_data = {
         'id': slug,
         'name': name,
@@ -209,27 +216,22 @@ def fetch_distribution_details(session: requests.Session, slug: str, name: str) 
     except Exception:
         pass
     
-    # Extract description
-    # The description is usually in the second or third paragraph after the metadata list
+    # The description is the loose text between the metadata <ul> and the
+    # bold "Popularity (hits per day)" line that follows it.
     desc_section = soup.find('td', class_='TablesTitle')
-    if desc_section:
-        # Clone to avoid modifying original
-        temp_soup = BeautifulSoup(str(desc_section), 'html.parser')
-        # Remove the ul/li metadata
-        ul = temp_soup.find('ul')
-        if ul:
-            ul.decompose()
-        # Remove the "Last Update" text if it's there
-        desc_text = temp_soup.get_text(separator=' ', strip=True)
-        # Often starts with "Name Last Update: ... OS Type: ..."
-        # We want to skip to the actual description
-        m = re.search(r'Popularity:.*?\)\s*(.*)', desc_text)
-        if m:
-            distro_data['description'] = m.group(1).split('Submit a review')[0].strip()[:500]
-        else:
-            # Fallback: just take the text but try to skip common headers
-            clean_desc = re.sub(r'^.*?Status: [A-Za-z]+ ', '', desc_text)
-            distro_data['description'] = clean_desc.split('Submit a review')[0].strip()[:500]
+    ul = desc_section.find('ul') if desc_section else None
+    if ul:
+        parts = []
+        for sibling in ul.next_siblings:
+            if isinstance(sibling, Comment):
+                continue
+            if isinstance(sibling, NavigableString):
+                parts.append(str(sibling))
+            elif sibling.name == 'b':
+                break
+            else:
+                parts.append(sibling.get_text(' ', strip=True))
+        distro_data['description'] = ' '.join(' '.join(parts).split())[:500]
     
     # Extract popularity ranking
     try:
@@ -308,9 +310,7 @@ def fetch_distribution_details(session: requests.Session, slug: str, name: str) 
         status = distro_data.get('status', '')
         if status and status.lower() in ['discontinued', 'inactive', 'dormant']:
             distro_data['stop'] = dates[-1]
-    
-    # Small delay is now handled in the main loop for better control
-    
+
     return distro_data
 
 
