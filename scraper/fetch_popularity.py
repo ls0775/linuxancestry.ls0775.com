@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Fetch DistroWatch "Last 3 months" page-hit rankings and patch public/distros.json.
+Fetch DistroWatch "Last 6 months" page-hit rankings and patch public/distros.json.
 
-Fetches https://distrowatch.com/dwres.php?resource=popularity and parses the "Last 3 months" ranking table and assigns rank 1-N to each distro.
+Fetches https://distrowatch.com/dwres.php?resource=popularity and parses the "Last 6 months" ranking table and assigns rank 1-N to each distro.
 
 Usage:
     python fetch_popularity.py           # fetch and patch
@@ -27,16 +27,16 @@ def fetch_html(url: str) -> str:
     return response.text
 
 
-def parse_last_3_months(html: str) -> dict:
+def parse_last_6_months(html: str) -> dict:
     """
-    Parse the 'Last 3 months' ranking table.
+    Parse the 'Last 6 months' ranking table.
     Returns {distro_slug: rank} where rank 1 = most popular.
     """
     soup = BeautifulSoup(html, 'html.parser')
 
     target_table = None
     for th in soup.find_all('th'):
-        if 'Last 3 months' in th.get_text():
+        if 'Last 6 months' in th.get_text():
             target_table = th.find_parent('table')
             break
 
@@ -71,12 +71,12 @@ def main():
         print('ERROR: Empty response.')
         sys.exit(1)
 
-    rankings = parse_last_3_months(html)
+    rankings = parse_last_6_months(html)
     if not rankings:
-        print('ERROR: Could not find "Last 3 months" table.')
+        print('ERROR: Could not find "Last 6 months" table.')
         sys.exit(1)
 
-    print(f'Found {len(rankings)} ranked distros (Last 3 months)')
+    print(f'Found {len(rankings)} ranked distros (Last 6 months)')
 
     distros = json.loads(distros_json.read_text(encoding='utf-8'))
 
@@ -93,7 +93,7 @@ def main():
         [d for d in distros if d.get('popularity')],
         key=lambda x: int(x['popularity'])
     )[:20]
-    print('\nTop 20 (Last 3 months):')
+    print('\nTop 20 (Last 6 months):')
     for d in top20:
         print(f'  #{int(d["popularity"]):>4}  {d["name"]}')
 

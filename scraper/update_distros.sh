@@ -76,7 +76,7 @@ echo ""
 
 python3 download_logos.py
 
-# Step 4: Fetch popularity rankings (Last 3 months from DistroWatch)
+# Step 4: Fetch popularity rankings (Last 6 months from DistroWatch)
 echo ""
 echo "Step 4: Fetching popularity rankings from DistroWatch..."
 echo ""

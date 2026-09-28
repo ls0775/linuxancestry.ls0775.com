@@ -30,7 +30,7 @@ The script runs four steps:
 2. `transform_data.py --merge` — normalises parentage, dates and colours and
    merges the result into the existing `public/distros.json`.
 3. `download_logos.py` — fills `public/logos/{id}.png` for any missing logo.
-4. `fetch_popularity.py` — patches the "Last 3 months" page-hit rank.
+4. `fetch_popularity.py` — patches the "Last 6 months" page-hit rank.
 
 ### Crawl delay
 
